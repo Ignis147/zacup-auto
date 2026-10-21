@@ -842,7 +842,7 @@ export type CoverageValue =
 
 export function coverageMonths(stock: number | null, ads: AvgDailySales): CoverageValue {
   if (stock === null) return { kind: 'unknown' };
-  if (!ads.known) return { kind: 'unknown' };
+  if (!ads.known || ads.value === null) return { kind: 'unknown' };
   if (ads.value === 0) return { kind: 'none' };
   return { kind: 'months', months: stock / ads.value / 30 };
 }
