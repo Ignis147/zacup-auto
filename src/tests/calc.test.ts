@@ -6,6 +6,7 @@ import {
   calcSdp, buildClosedMap, calcStockMonths, buildForecast, collectReceipts,
   redistribute, appliedPrice, isMultiple, boxesFor, roundUpToPack, convert,
   plannedDatesFromOrder, effectiveLogistics, totalLeadDays, recommendOrder, calcOrderLine,
+  incomingQtyForProduct, todayISO, addDays,
 } from '../calc';
 import { db, articleFromBarcode, exportBackup, restoreBackup, validateBackup, DEFAULT_SETTINGS } from '../db';
 
@@ -310,6 +311,101 @@ describe('Тест 15. Поставки с одинаковой датой', () 
     const ev = collectReceipts([mk(1, 100), mk(2, 200)], 'vld', '2026-01-05', true);
     expect(ev.length).toBe(1);
     expect(ev[0].qty).toBe(300);
+  });
+});
+
+describe('Регрессия: привязка поставок к товарам в главной таблице (строго по productId)', () => {
+  // Реальные данные поставки «Выход июля»: три разных артикула в одной поставке.
+  const P193 = 193, P353 = 353, P209 = 209; // id товаров фиксированы тестом
+  const julSupply: Supply = {
+    id: 501, brandId: BRAND_ID, number: 'Выход июля', status: 'in_transit',
+    orderDate: '2026-05-01', departDate: '2026-06-01',
+    vldPlannedDate: addDays(todayISO(), 30), mskPlannedDate: addDays(todayISO(), 50),
+    createdAt: '2026-05-01',
+    items: [
+      { productId: P193, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0 },
+      { productId: P353, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0 },
+      { productId: P209, totalQty: 300, vldQty: 120, mskQty: 180, vldReceived: 0, mskReceived: 0 },
+    ],
+  };
+
+  it('вторая строка поставки не получает количества всей поставки или других артикулов', () => {
+    const asOf = todayISO();
+    // Каждый артикул видит только своё количество — как в карточке поставки.
+    expect(incomingQtyForProduct([julSupply], 'vld', asOf, true, P193).incoming).toBe(84);
+    expect(incomingQtyForProduct([julSupply], 'msk', asOf, true, P193).incoming).toBe(84);
+    expect(incomingQtyForProduct([julSupply], 'vld', asOf, true, P353).incoming).toBe(72);
+    expect(incomingQtyForProduct([julSupply], 'msk', asOf, true, P353).incoming).toBe(36);
+    expect(incomingQtyForProduct([julSupply], 'vld', asOf, true, P209).incoming).toBe(120);
+    expect(incomingQtyForProduct([julSupply], 'msk', asOf, true, P209).incoming).toBe(180);
+  });
+
+  it('исключена сумма всех остальных товаров поставки (старый баг: 1089 / 971 вместо 84 / 84)', () => {
+    const asOf = todayISO();
+    const badVld = julSupply.items.filter((i) => i.productId !== P193)
+      .reduce((a, i) => a + i.vldQty + i.mskQty, 0); // 108 + 300 → часть «чужих» сумм
+    const res = incomingQtyForProduct([julSupply], 'vld', asOf, true, P193);
+    expect(res.incoming).not.toBe(badVld);
+    expect(res.incoming).toBe(84);
+    // Сумма по всем артикулам равна сумме по поставке и не задваивается
+    const all = ['vld', 'msk'].map((b) =>
+      [P193, P353, P209].reduce((a, pid) => a + incomingQtyForProduct([julSupply], b as any, asOf, true, pid).incoming, 0));
+    expect(all).toEqual([276, 300]); // ВЛД 84+72+120, МСК 84+36+180
+  });
+
+  it('несколько поставок: количества одного товара суммируются по поставкам, разные артикулы не смешиваются', () => {
+    const asOf = todayISO();
+    const aug: Supply = {
+      ...julSupply, id: 502, number: 'Август',
+      items: [
+        { productId: P193, totalQty: 48, vldQty: 24, mskQty: 24, vldReceived: 0, mskReceived: 0 },
+        { productId: P353, totalQty: 60, vldQty: 60, mskQty: 0, vldReceived: 0, mskReceived: 0 },
+      ],
+    };
+    expect(incomingQtyForProduct([julSupply, aug], 'vld', asOf, true, P193).incoming).toBe(84 + 24);
+    expect(incomingQtyForProduct([julSupply, aug], 'msk', asOf, true, P193).incoming).toBe(84 + 24);
+    expect(incomingQtyForProduct([julSupply, aug], 'vld', asOf, true, P353).incoming).toBe(72 + 60);
+    expect(incomingQtyForProduct([julSupply, aug], 'msk', asOf, true, P209).incoming).toBe(180);
+  });
+
+  it('уже полученные количества не учитываются как находящиеся в пути', () => {
+    const asOf = todayISO();
+    const partial: Supply = {
+      ...julSupply, id: 503, number: 'Частичная', status: 'partial',
+      items: [
+        { productId: P193, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 84, mskReceived: 34, vldActualDate: '2026-07-10' },
+        { productId: P209, totalQty: 300, vldQty: 120, mskQty: 180, vldReceived: 0, mskReceived: 0 },
+      ],
+    };
+    expect(incomingQtyForProduct([partial], 'vld', asOf, true, P193).incoming).toBe(0);   // всё получено
+    expect(incomingQtyForProduct([partial], 'msk', asOf, true, P193).incoming).toBe(50);  // 84 − 34
+    expect(incomingQtyForProduct([partial], 'vld', asOf, true, P209).incoming).toBe(120); // соседний товар не затронут
+  });
+
+  it('collectReceipts с productId возвращает события только этого товара; объединение — только один товар и дата', () => {
+    const asOf = todayISO();
+    const ev = collectReceipts([julSupply], 'vld', asOf, true, P353);
+    expect(ev.length).toBe(1);
+    expect(ev[0].productId).toBe(P353);
+    expect(ev[0].qty).toBe(72);
+    // две поставки одного товара с одинаковой плановой датой суммируются в одно событие
+    const same: Supply = { ...julSupply, id: 504, items: [{ productId: P209, totalQty: 100, vldQty: 100, mskQty: 0, vldReceived: 0, mskReceived: 0 }] };
+    const ev2 = collectReceipts([julSupply, same], 'vld', asOf, true, P209);
+    expect(ev2.length).toBe(1);
+    expect(ev2[0].qty).toBe(220);
+  });
+
+  it('прогноз и рекомендация нового заказа используют только количества своего артикула', () => {
+    const asOf = todayISO();
+    const horizon = addDays(asOf, 110);
+    // Товару P353 прогнозируется поступление 72 во ВЛД, а не вся поставка (576/…)
+    const receipts = collectReceipts([julSupply], 'vld', asOf, true, P353);
+    const f = buildForecast(asOf, 0, 1, receipts, horizon);
+    expect(f.points.reduce((a, p) => a + p.receiptQty, 0)).toBe(72);
+    // Рекомендация: цель 3 мес × 30 × СДП 1 = 90 минус прогноз перед поступлением (0) → 90
+    const fcBefore = f.stockAtDate(horizon);
+    const rec = recommendOrder({ sdp: 1, forecastStockBefore: fcBefore, packSize: 12, targetMonths: 3 });
+    expect(rec.recommended).toBe(96); // округление вверх до коробок по 12
   });
 });
 
