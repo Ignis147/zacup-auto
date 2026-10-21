@@ -7,7 +7,7 @@
  *  - После оформления заказ учитывается как ожидаемое поступление РОВНО ОДИН РАЗ (статусы не дублируют).
  *  - Поступление отмечается ТОЛЬКО целиком по филиалу; полученная часть блокируется для правки.
  *  - Qобщ = QВЛК + QМСК; при изменении одного филиала второй пересчитывается; некратность — ошибка подтверждения.
- */
+   
 import { db } from '../database';
 import type { PurchaseOrderRow, OrderLineRow, BranchAllocationRow, ProductRow } from '../schema';
 import { newId, nowISO, writeAudit, localTodayISO } from '../util';
