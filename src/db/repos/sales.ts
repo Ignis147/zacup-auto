@@ -8,7 +8,7 @@
  */
 import { db } from '../database';
 import type { SalesRow } from '../schema';
-import { newId, nowISO, writeAudit } from '../util';
+import { nowISO, writeAudit } from '../util';
 import { BRANCHES, parseYearMonth, ymCompare, type Branch, type YearMonth } from '../../core/types';
 
 const salesId = (productId: string, branch: Branch, ym: YearMonth) => `${productId}|${branch}|${ym}`;

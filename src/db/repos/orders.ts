@@ -89,23 +89,18 @@ export const ordersRepo = {
 
   /**
    * Установка/изменение позиции и распределения (ручной ввод QВЛК/QМСК в единицах товара).
-   * Черновик — свободно. Утверждённый заказ на подготовке — свободное редактирование без причины
-   * (снимок-эталон в snapshot остаётся неизменным, изменения пишутся в аудит, §5/§18).
-   * Отправленная живая поставка (in_transit/partial) правится ТОЛЬКО через корректировки:
-   * reallocate с причиной или updateQty с причиной (§10). Уже ПОЛУЧЕННАЯ филиальная часть
-   * заблокирована для любого обычного редактирования.
+   * Черновик — свободно. Утверждённый заказ (approved/preparing) — свободное редактирование
+   * живой копии (снимок-эталон в snapshot остаётся неизменным, изменения пишутся в аудит, §5/§18).
+   * Отправленная поставка (in_transit/partial/completed) правится ТОЛЬКО через корректировки:
+   * reallocate с причиной или correctQuantity с причиной (§10).
    */
   async setLine(
     orderId: string, productId: string,
     qtyVLK: number, qtyMSK: number, actor = 'оператор',
   ): Promise<PurchaseOrderRow> {
     const order = await this.mustGet(orderId);
-    // «обычное редактирование» запрещено для отправленной поставки, если ХОТЬ ОДИН филиал
-    // уже подтвердил поступление (§10). До подтверждённых прибытий поставка правится свободно —
-    // это стадия оперативной корректировки (даты/количества), снимок-эталон при этом неизменен.
-    const anyReceived = Object.values(order.allocations).some((p) => p.VLK.received || p.MSK.received);
-    if (anyReceived && ['in_transit', 'partial'].includes(order.status)) {
-      throw new Error('Отправленная поставка с подтверждённым поступлением неизменяема напрямую. Используйте корректировку (reallocate / correctQuantity с причиной).');
+    if (['in_transit', 'partial', 'completed'].includes(order.status)) {
+      throw new Error('Отправленная поставка неизменяема напрямую. Используйте корректировку (reallocate / correctQuantity с причиной).');
     }
     return this.setLineImpl(orderId, productId, qtyVLK, qtyMSK, actor);
   },
@@ -124,22 +119,20 @@ export const ordersRepo = {
     const order = await this.mustGet(orderId);
     if (order.status === 'completed' || order.status === 'cancelled') throw new Error('Закрытый/отменённый заказ редактировать нельзя');
     if (qtyVLK < 0 || qtyMSK < 0) throw new Error('Количество не может быть отрицательным');
-    if (correctionReason === undefined && ['in_transit', 'partial'].includes(order.status)) {
-      const anyReceived = Object.values(order.allocations).some((p) => p.VLK.received || p.MSK.received);
-      if (anyReceived) {
-        throw new Error('Отправленная поставка с подтверждённым поступлением неизменяема напрямую. Используйте корректировку (reallocate / correctQuantity с причиной).');
-      }
-    }
     const prod = await db.products.get(productId);
     if (!prod) throw new Error('Товар не найден');
     if (prod.brandId !== order.brandId) throw new Error('Товар принадлежит другому бренду (изоляция данных)');
 
-    // защита полученной части — всегда, включая документируемые корректировки (§10)
+    // Защита полученной филиальной части — при ЛЮБОМ изменении, включая документируемые
+    // корректировки (§10): «после подтверждения поступления филиала его полученная часть
+    // заблокирована для обычного редактирования». Если перенос количества между филиалами
+    // невозможен без изменения уже полученного — требуется отдельная документируемая
+    // корректировка новым документом; здесь мы такую попытку отсекаем.
     const prevAlloc = order.allocations[productId];
     if (prevAlloc) {
       for (const br of BRANCHES) {
         if (prevAlloc[br].received && prevAlloc[br].qty !== (br === 'VLK' ? qtyVLK : qtyMSK)) {
-          throw new Error(`Часть ${br} уже получена (${prevAlloc[br].qty}) — её изменение возможно только через документируемую корректировку`);
+          throw new Error(`Часть ${br} уже получена (${prevAlloc[br].qty}) — изменение полученной части невозможно даже корректировкой; оформьте отдельный корректирующий документ`);
         }
       }
     }
@@ -189,6 +182,9 @@ export const ordersRepo = {
   async reallocate(orderId: string, productId: string, newQtyVLK: number, reason: string, actor = 'оператор'): Promise<PurchaseOrderRow> {
     if (!reason.trim()) throw new Error('Причина перераспределения обязательна (аудит)');
     const order = await this.mustGet(orderId);
+    if (!['in_transit', 'partial'].includes(order.status)) {
+      throw new Error('Перераспределение с причиной предназначено для отправленных поставок; для черновика/подготовки используйте обычное редактирование');
+    }
     const line = order.lines.find((l) => l.productId === productId);
     if (!line) throw new Error('Позиция не найдена');
     const total = line.qtyVLK + line.qtyMSK;
@@ -196,7 +192,7 @@ export const ordersRepo = {
     const alloc = order.allocations[productId];
     if (alloc?.VLK.received && newQtyVLK !== alloc.VLK.qty) throw new Error('Часть ВЛК получена — перенос невозможен без корректировки');
     if (alloc?.MSK.received && total - newQtyVLK !== alloc.MSK.qty) throw new Error('Часть МСК получена — перенос невозможен без корректировки');
-    return this.setLineImpl(orderId, productId, newQtyVLK, total - newQtyVLK, actor);
+    return this.setLineImpl(orderId, productId, newQtyVLK, total - newQtyVLK, actor, `перераспределение: ${reason}`);
   },
 
   /**
