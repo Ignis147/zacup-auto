@@ -288,7 +288,23 @@ export function buildForecast(
   receipts: ReceiptEvent[],
   horizonEnd: string,
 ): ForecastResult {
-  const sorted = [...receipts].filter((r) => r.date >= asOfDate && r.qty > 0).sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const sorted = [...receipts]
+    .filter((r) => r.date >= asOfDate && r.qty > 0)
+    .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  // Поступления с одинаковой датой суммируются в одно событие —
+  // дневной спрос за день списывается один раз (см. Тест 15).
+  const merged: ReceiptEvent[] = [];
+  for (const r of sorted) {
+    const last = merged[merged.length - 1];
+    if (last && last.date === r.date) {
+      last.qty += r.qty;
+      last.overdue = last.overdue || r.overdue;
+    } else {
+      merged.push({ ...r });
+    }
+  }
+  sorted.length = 0;
+  sorted.push(...merged);
 
   const points: ForecastPoint[] = [];
   let stock = Math.max(0, startStock);
@@ -303,7 +319,8 @@ export function buildForecast(
     const days = Math.max(0, daysBetween(prevDate, r.date));
     const consumed = effSdp * days;
     const before = Math.max(0, stock - consumed);
-    const depleted = stock - consumed < -1e-9;
+    // дефицит фиксируем только при реальном потреблении за положительное число дней
+    const depleted = days > 0 && stock - consumed < -1e-9;
     if (depleted) {
       hasShortage = true;
       const daysWithStock = stock / (effSdp || 1);

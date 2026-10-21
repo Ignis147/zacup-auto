@@ -2,7 +2,7 @@
 import { useMemo, useState } from 'react';
 import type {
   Brand, Product, SalesRecord, PeriodStatus, StockSnapshot, Supply, Settings,
-  PriceHistoryEntry, FixedOrder, OrderLine, Branch,
+  PriceHistoryEntry, FixedOrder, OrderLine, Branch, PriceTier,
 } from './types';
 import { db, articleFromBarcode, isBarcodeTaken } from './db';
 import {
@@ -614,8 +614,8 @@ export function ProductDetail({
     onChanged();
   }
 
-  async function savePrice(kind: 'fixed' | 'tiered', fixedPrice?: number, tiers?: { minBoxes: number; price: number }[]) {
-    await patchProductWithHistory(product, kind, fixedPrice, tiers, brand.currency);
+  async function savePrice(kind: 'fixed' | 'tiered', fixedPrice?: number, tiers?: PriceTier[], comment?: string) {
+    await patchProductWithHistory(product, kind, brand.currency, fixedPrice, tiers, comment);
     onChanged();
   }
 
@@ -704,7 +704,7 @@ export function ProductDetail({
   );
 }
 
-async function patchProductWithHistory(product: Product, kind: 'fixed' | 'tiered', fixedPrice?: number, tiers?: { minBoxes: number; price: number }[], currency: 'KRW' | 'USD') {
+async function patchProductWithHistory(product: Product, kind: 'fixed' | 'tiered', currency: 'KRW' | 'USD', fixedPrice?: number, tiers?: PriceTier[], comment?: string) {
   const changed = kind !== product.priceKind ||
     (kind === 'fixed' && fixedPrice !== product.fixedPrice) ||
     (kind === 'tiered' && JSON.stringify(tiers) !== JSON.stringify(product.tiers));
@@ -716,6 +716,7 @@ async function patchProductWithHistory(product: Product, kind: 'fixed' | 'tiered
       newPriceKind: kind, newFixedPrice: kind === 'fixed' ? fixedPrice : undefined,
       newTiers: kind === 'tiered' ? tiers : undefined,
       currency,
+      comment: comment?.trim() ? comment.trim() : undefined,
     });
   }
 }
@@ -726,11 +727,11 @@ function PriceEditor({
   product: Product;
   currency: 'KRW' | 'USD';
   history: PriceHistoryEntry[];
-  onSave: (kind: 'fixed' | 'tiered', fixedPrice?: number, tiers?: { minBoxes: number; price: number }[]) => Promise<void>;
+  onSave: (kind: 'fixed' | 'tiered', fixedPrice?: number, tiers?: PriceTier[], comment?: string) => Promise<void>;
 }) {
   const [kind, setKind] = useState<'fixed' | 'tiered'>(product.priceKind);
   const [fixedPrice, setFixedPrice] = useState<number | null>(product.fixedPrice ?? null);
-  const [tiers, setTiers] = useState<(product.tiers ?? [{ minBoxes: 1, price: product.fixedPrice ?? 0 }]).slice().sort((a, b) => a.minBoxes - b.minBoxes);
+  const [tiers, setTiers] = useState<PriceTier[]>((product.tiers ?? [{ minBoxes: 1, price: product.fixedPrice ?? 0 }]).slice().sort((a, b) => a.minBoxes - b.minBoxes));
   const [comment, setComment] = useState('');
 
   return (
@@ -766,7 +767,7 @@ function PriceEditor({
         <div className="field grow"><label>Комментарий к изменению цены (сохранится в истории)</label>
           <input value={comment} onChange={(e) => setComment(e.target.value)} /></div>
         <button className="btn primary" style={{ alignSelf: 'flex-end' }} onClick={async () => {
-          await onSave(kind, kind === 'fixed' ? (fixedPrice ?? undefined) : undefined, kind === 'tiered' ? [...tiers].sort((a, b) => a.minBoxes - b.minBoxes) : undefined);
+          await onSave(kind, kind === 'fixed' ? (fixedPrice ?? undefined) : undefined, kind === 'tiered' ? [...tiers].sort((a, b) => a.minBoxes - b.minBoxes) : undefined, comment);
           setComment('');
         }}>Сохранить цену (с записью в историю)</button>
       </div>

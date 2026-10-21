@@ -113,7 +113,7 @@ export function validateBackup(data: unknown): string | null {
 export async function restoreBackup(data: BackupData): Promise<void> {
   const err = validateBackup(data);
   if (err) throw new Error(err);
-  await db.transaction('rw', db.tables.toArray(), async () => {
+  await db.transaction('rw', [db.brands, db.products, db.priceHistory, db.sales, db.periods, db.salesLog, db.stocks, db.supplies, db.orders, db.settings] as any, async () => {
     await db.brands.clear();
     await db.products.clear();
     await db.priceHistory.clear();
