@@ -1,0 +1,81 @@
+* { box-sizing: border-box; }
+html, body, #root { margin: 0; padding: 0; height: 100%; }
+body { font-family: "Segoe UI", Roboto, Arial, sans-serif; font-size: 13px; color: #1c2733; background: #eef1f5; }
+
+button { font: inherit; cursor: pointer; }
+input, select, textarea { font: inherit; }
+
+.app-header { display: flex; align-items: center; gap: 8px; background: #243b53; color: #fff; padding: 6px 12px; flex-wrap: wrap; }
+.app-header .logo { font-weight: 700; font-size: 16px; margin-right: 10px; }
+.app-header button.tab { background: transparent; color: #cfd8e3; border: none; padding: 7px 14px; border-radius: 6px 6px 0 0; }
+.app-header button.tab.active { background: #eef1f5; color: #1c2733; font-weight: 600; }
+.app-header .brand-select { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.app-header select { padding: 4px 8px; border-radius: 5px; border: 1px solid #486581; background: #102a43; color: #fff; }
+
+.page { padding: 12px; }
+.card { background: #fff; border: 1px solid #d3dae3; border-radius: 8px; padding: 12px; margin-bottom: 12px; }
+.card h3 { margin: 0 0 8px; font-size: 15px; }
+.row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.grow { flex: 1; }
+.muted { color: #627d98; }
+.small { font-size: 11px; }
+.err { color: #cc2936; }
+.ok-soft { color: #3e7c4f; }
+
+.btn { border: 1px solid #829ab1; background: #f0f4f8; border-radius: 6px; padding: 5px 12px; }
+.btn:hover { background: #dde6ef; }
+.btn.primary { background: #243b53; color: #fff; border-color: #243b53; }
+.btn.primary:hover { background: #33415c; }
+.btn.danger { background: #cc2936; color: #fff; border-color: #cc2936; }
+.btn.small { padding: 2px 8px; font-size: 12px; }
+.btn:disabled { opacity: .5; cursor: default; }
+
+table.grid { border-collapse: collapse; width: 100%; background: #fff; }
+table.grid th, table.grid td { border: 1px solid #cbd2d9; padding: 3px 6px; text-align: left; vertical-align: top; }
+table.grid th { background: #f0f4f8; position: sticky; top: 0; z-index: 2; font-weight: 600; white-space: nowrap; }
+table.grid td.num { text-align: right; white-space: nowrap; }
+table.grid tr:hover td { background: #f7fafc; }
+
+.tbl-scroll { overflow: auto; max-height: calc(100vh - 190px); border: 1px solid #cbd2d9; border-radius: 6px; background: #fff; }
+
+.cell-input { width: 100%; border: 1px solid transparent; background: transparent; padding: 2px 4px; font: inherit; text-align: right; }
+.cell-input:hover { border-color: #bcccdc; }
+.cell-input:focus { outline: 2px solid #829ab1; background: #fff; }
+.cell-input.text { text-align: left; }
+
+.sticky-col { position: sticky; background: #fff; z-index: 1; }
+th.sticky-col { z-index: 3; background: #f0f4f8; }
+
+.warn-cell { background: #ffd6d6 !important; }
+.warn-orange { background: #ffe3c2 !important; }
+.warn-ok { background: #e2f0e3 !important; }
+.warn-nodata { background: #eceff3 !important; color: #627d98; }
+.overdue { color: #cc2936; font-weight: 600; }
+
+.badge { display: inline-block; padding: 1px 8px; border-radius: 10px; font-size: 11px; border: 1px solid; }
+.badge.ordered { background: #dbeafe; border-color: #93c5fd; color: #1e40af; }
+.badge.in_transit { background: #fef9c3; border-color: #fde047; color: #854d0e; }
+.badge.partial { background: #ffedd5; border-color: #fdba74; color: #9a3412; }
+.badge.received { background: #dcfce7; border-color: #86efac; color: #166534; }
+.badge.cancelled { background: #f1f5f9; border-color: #cbd5e1; color: #64748b; text-decoration: line-through; }
+.badge.archived { background: #f1f5f9; border-color: #cbd5e1; color: #64748b; }
+
+.colgroup { background: #e3eaf2; text-align: center; font-size: 11px; }
+
+dialog { border: 1px solid #829ab1; border-radius: 10px; padding: 16px; max-width: min(1100px, 95vw); width: 100%; max-height: 90vh; overflow: auto; }
+dialog::backdrop { background: rgba(16, 42, 67, .45); }
+.dialog-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 14px; }
+.field { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.field label { font-size: 12px; color: #486581; }
+.field input, .field select { padding: 5px 8px; border: 1px solid #bcccdc; border-radius: 5px; }
+
+.tooltip { position: relative; }
+.tooltip .tip { display: none; position: absolute; bottom: 100%; left: 0; background: #102a43; color: #fff; padding: 4px 8px; border-radius: 5px; white-space: pre; z-index: 10; font-size: 11px; }
+.tooltip:hover .tip { display: block; }
+
+.tabs-sub { display: flex; gap: 6px; margin-bottom: 10px; }
+.tabs-sub button { border: 1px solid #829ab1; border-bottom: none; background: #dfe7ef; padding: 5px 14px; border-radius: 6px 6px 0 0; }
+.tabs-sub button.active { background: #fff; font-weight: 600; }
+
+.kpi { display: inline-block; margin-right: 16px; }
+.kpi b { font-size: 15px; }
