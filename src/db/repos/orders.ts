@@ -73,11 +73,9 @@ export const ordersRepo = {
     const before = await this.mustGet(id);
     if (before.snapshot && before.status !== 'draft') {
       // изменение дат утверждённой/живой поставки — отдельная записываемая корректировка (§10, §18)
-      for (const k of Object.keys(patch)) {
-        if (before.status === 'completed' || before.status === 'cancelled') {
-          throw new Error('Дата закрытой/отменённой поставки менять нельзя — создайте корректировку новым документом');
-        }
-      }
+if (before.status === 'completed' || before.status === 'cancelled') {
+  throw new Error('Дата закрытой/отменённой поставки менять нельзя — создайте корректировку новым документом');
+}
     }
     const after: PurchaseOrderRow = { ...before, ...patch, updatedAt: nowISO(), updatedBy: actor };
     await db.transaction('rw', db.orders, db.audit, async () => {
