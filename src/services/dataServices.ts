@@ -80,7 +80,9 @@ export async function forecastForProduct(
     db.sales.where('productId').equals(productId).toArray(),
     db.orders.where('brandId').equals(p.brandId).toArray(),
   ]);
-  const ads = calcADS(sales.filter((s) => s.branch === branch), lastMonthsWindow(new Date(now)));
+  // «now» в формате YYYY-MM-DD парсится как UTC — фиксируем тот же таймзону,
+  // чтобы окно месяцев не сдвинулось на месяц при полуночном UTC.
+  const ads = calcADS(sales.filter((s) => s.branch === branch), lastMonthsWindow(new Date(`${now}T12:00:00Z`)));
   const stockRows = (await db.stock.where('productId').equals(productId).toArray())
     .filter((s) => s.branch === branch).sort((a, b) => (a.asOf < b.asOf ? -1 : 1));
   const snap = stockRows[stockRows.length - 1];

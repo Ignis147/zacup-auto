@@ -7,6 +7,7 @@
 import 'fake-indexeddb/auto';
 import { describe, it, expect, beforeEach } from 'vitest';
 import { ZakaznikDB } from '../db/database';
+import { db } from '../db/database';
 import { brandsRepo, brandSettingsRepo } from '../db/repos/brands';
 import { productsRepo } from '../db/repos/products';
 import { salesRepo } from '../db/repos/sales';
@@ -265,10 +266,39 @@ describe('Заказы и поставки (§9, §10, §18)', () => {
     await expect(ordersRepo.markBranchReceived(o.id, 'VLK', '2027-02-04')).rejects.toThrow(/двойное/);
     // полученная часть заблокирована для обычного редактирования
     await expect(ordersRepo.setLine(o.id, p.id, 400, 2000)).rejects.toThrow(/уже получена/);
+    // отправленная поставка без причины не правится вообще
+    await expect(ordersRepo.setLine(o.id, p.id, 800, 1600)).rejects.toThrow(/неизменяема напрямую/);
     // непоступившую часть менять можно, но reallocate без причины запрещён
     await expect(ordersRepo.reallocate(o.id, p.id, 400, '')).rejects.toThrow(/Причина/);
+    // ...а с причиной — можно: меняется только непоступившая МСК-часть, ВЛК остаётся 800
+    const realloc = await ordersRepo.reallocate(o.id, p.id, 800, 'перераспределение из-за недогруза');
+    expect(realloc.lines[0].qtyMSK).toBe(1600);
+    expect(realloc.allocations[p.id].VLK.qty).toBe(800);
+    expect(realloc.allocations[p.id].VLK.received).toBe(true);
+    // контролируемая корректировка количества тоже требует причины и не трогает полученную часть
+    await expect(ordersRepo.correctQuantity(o.id, p.id, 400, 1600, '')).rejects.toThrow(/Причина/);
+    await expect(ordersRepo.correctQuantity(o.id, p.id, 400, 1600, 'ошибка ввода')).rejects.toThrow(/уже получена/);
     const msk = await ordersRepo.markBranchReceived(o.id, 'MSK', '2027-02-23');
     expect(msk.status).toBe('completed');
+    // после закрытия нельзя править даже с причиной
+    await expect(ordersRepo.correctQuantity(o.id, p.id, 400, 400, 'после закрытия')).rejects.toThrow(/Закрытый/);
+  });
+
+  it('правка живой поставки на подготовке: текущие данные меняются, утверждённый снимок — нет (§5, §18)', async () => {
+    const { o, p } = await orderFixture();
+    await ordersRepo.setLine(o.id, p.id, 800, 1600);
+    const approved = await ordersRepo.approve(o.id, rates, {}, {}, []);
+    await ordersRepo.setStatusPreparing(o.id);
+    // свободная правка до отправки
+    const upd = await ordersRepo.setLine(o.id, p.id, 400, 400);
+    expect(upd.lines[0].qtyVLK).toBe(400);
+    // исходный снимок сохранён без изменений
+    const fresh = await ordersRepo.mustGet(o.id);
+    expect(fresh.snapshot!.lines[0].qtyVLK).toBe(800);
+    expect(fresh.snapshot!.lines[0].lineTotal).toBe(approved.snapshot!.lines[0].lineTotal);
+    // изменения зафиксированы в аудите
+    const audit = await db.audit.where('entityId').equals(o.id).toArray();
+    expect(audit.some((a) => a.action === 'set-line')).toBe(true);
   });
 
   it('учёт ожидаемых поступлений ровно один раз; черновик не учитывается; свой заказ исключается', async () => {
@@ -430,34 +460,36 @@ describe('Мост к расчётному ядру (dataServices)', () => {
     const b = await brandsRepo.create('Core');
     const p = await productsRepo.create({ brandId: b.id, barcode: '1210000000020', name: 'Ядро', packSize: 40, priceMode: 'fixed', fixedPrice: '12760', tiers: [], currency: 'KRW' });
     // закроем 2 месяца продаж VLK: 300 и 300 → среднемесячно 300 → СДП 10/день
-    await salesRepo.setValue(p.id, b.id, 'VLK', '2025-08', 300);
-    await salesRepo.setValue(p.id, b.id, 'VLK', '2025-09', 300);
-    await salesRepo.closeMonth(b.id, '2025-08', { allowIncomplete: true });
-    await salesRepo.closeMonth(b.id, '2025-09', { allowIncomplete: true });
+    // (месяцы должны попасть в 12-месячное окно относительно даты расчёта 2026-10)
+    await salesRepo.setValue(p.id, b.id, 'VLK', '2026-08', 300);
+    await salesRepo.setValue(p.id, b.id, 'VLK', '2026-09', 300);
+    await salesRepo.closeMonth(b.id, '2026-08', { allowIncomplete: true });
+    await salesRepo.closeMonth(b.id, '2026-09', { allowIncomplete: true });
     await stockRepo.setSnapshot(p.id, b.id, 'VLK', 100, '2026-10-01T10:00:00.000Z');
 
-    const bundle = await loadBrandBundle(b.id, new Date('2025-10-21T12:00:00Z'));
+    const bundle = await loadBrandBundle(b.id, new Date('2026-10-21T12:00:00Z'));
     const item = bundle.find((x) => x.product.id === p.id)!;
     expect(item.ads.VLK.known).toBe(true);
     expect(item.ads.VLK.value).toBeCloseTo(10, 6);
     expect(item.ads.MSK.known).toBe(false); // нет подтверждённых месяцев → unknown, не 0
     expect(item.stock.VLK!.qty).toBe(100);
 
-    const f = await forecastForProduct(p.id, 'VLK', { now: '2025-10-21' });
+    // Снимок 1С датирован 2026-10-01 → прогноз стартует от даты снимка: 100 / 10 = дефицит с 2026-10-11
+    const f = await forecastForProduct(p.id, 'VLK', { now: '2026-10-05' });
     expect(f.ok).toBe(true);
     expect(f.startStock).toBe(100);
-    expect(f.firstDeficitDate).toBe('2025-10-11'); // 100 / 10 = 10 дней от 01.10
+    expect(f.firstDeficitDate).toBe('2026-10-11'); // 100 / 10 = 10 дней от 01.10.2026
 
     // оформленный заказ добавляет ожидаемое поступление в прогноз ровно один раз
     const o = await ordersRepo.createDraft({ brandId: b.id, issueDate: '2026-10-21', currency: 'KRW' });
     await ordersRepo.setLine(o.id, p.id, 0, 800);
     await ordersRepo.setLine(o.id, p.id, 400, 400);
     await ordersRepo.approve(o.id, rates, {}, {}, []);
-    const f2 = await forecastForProduct(p.id, 'VLK', { now: '2025-10-21' });
+    const f2 = await forecastForProduct(p.id, 'VLK', { now: '2026-10-05' });
     const arrivalsTotal = f2.segments.reduce((s, seg) => s + seg.arrival, 0);
     expect(arrivalsTotal).toBe(400); // одно поступление, не два
     // прогноз ДО собственного будущего заказа (dueBefore)
-    const f3 = await forecastForProduct(p.id, 'VLK', { now: '2025-10-21', dueBefore: '2025-10-30' });
+    const f3 = await forecastForProduct(p.id, 'VLK', { now: '2026-10-05', dueBefore: '2026-10-30' });
     expect(f3.segments.reduce((s, seg) => s + seg.arrival, 0)).toBe(0);
   });
 });
