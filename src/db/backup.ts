@@ -95,7 +95,7 @@ export async function restoreBackup(backup: BackupFile): Promise<void> {
   const validated = validateBackup(backup);
   await db.transaction(
     'rw',
-    db.brands, db.products, db.priceVersions, db.sales, db.stock, db.orders, db.settings, db.brandSettings, db.audit,
+    [db.brands, db.products, db.priceVersions, db.sales, db.stock, db.orders, db.settings, db.brandSettings, db.audit],
     async () => {
       await Promise.all([
         db.brands.clear(), db.products.clear(), db.priceVersions.clear(), db.sales.clear(),

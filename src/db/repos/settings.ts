@@ -35,7 +35,7 @@ export const settingsRepo = {
     const after: SettingsRow = { ...before, rates: { ...rates }, appVersion: APP_VERSION };
     await db.transaction('rw', db.settings, db.audit, async () => {
       await db.settings.put(after);
-      await writeAudit(db, { entity: 'settings', entityId: 'global', action: 'set-rates', details: `Курсы: USD=${rates.usdRub}, KRW=${rates.krwRub}`, before, after });
+      await writeAudit(db, { entity: 'settings', entityId: 'global', action: 'set-rates', details: `Курсы: USD=${rates.usdRub}, KRW=${rates.krwRub}`, before, after, actor });
     });
     return after;
   },
@@ -55,9 +55,8 @@ export const settingsRepo = {
     const after: SettingsRow = { ...before, ...patch };
     await db.transaction('rw', db.settings, db.audit, async () => {
       await db.settings.put(after);
-      await writeAudit(db, { entity: 'settings', entityId: 'global', action: 'update', details: 'Изменены глобальные настройки', before, after });
+      await writeAudit(db, { entity: 'settings', entityId: 'global', action: 'update', details: 'Изменены глобальные настройки', before, after, actor });
     });
-    void actor;
     return after;
   },
 };

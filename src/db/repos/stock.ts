@@ -9,7 +9,7 @@
 import { db } from '../database';
 import type { StockRow } from '../schema';
 import { newId, nowISO, writeAudit } from '../util';
-import { toDateOnly, BRANCHES, type Branch } from '../../core/types';
+import { toDateOnly, type Branch } from '../../core/types';
 
 export const stockRepo = {
   /** Загрузка нового снимка остатка (вручную или вставкой из Excel/1С). */

@@ -66,7 +66,7 @@ export const brandsRepo = {
   async delete(id: string, actor = 'оператор'): Promise<void> {
     const before = await db.brands.get(id);
     if (!before) return;
-    await db.transaction('rw', db.brands, db.brandSettings, db.products, db.priceVersions, db.sales, db.stock, db.orders, db.audit, async () => {
+    await db.transaction('rw', [db.brands, db.brandSettings, db.products, db.priceVersions, db.sales, db.stock, db.orders, db.audit], async () => {
       await db.brands.delete(id);
       await db.brandSettings.delete(id);
       await db.products.where('brandId').equals(id).delete();

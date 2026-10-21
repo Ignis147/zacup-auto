@@ -825,10 +825,6 @@ export function buildForecast(params: {
   };
 }
 
-function isFuture(dateIso: string, nowIso: string): boolean {
-  return diffDays(nowIso, dateIso) >= 0;
-}
-
 function maxISO(a: string, b: string): string {
   return toDateOnly(a).getTime() >= toDateOnly(b).getTime() ? toDateISO(toDateOnly(a)) : toDateISO(toDateOnly(b));
 }
