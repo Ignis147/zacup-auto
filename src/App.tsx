@@ -1,7 +1,7 @@
 // ===== Корневой компонент приложения «Заказник» =====
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { Brand, Product, SalesRecord, PeriodStatus, StockSnapshot, Supply, FixedOrder, Settings, PriceHistoryEntry, SalesEditLog } from './types';
-import { db, getSettings } from './db';
+import { db, getSettings, initDB } from './db';
 import { BrandsPage } from './Brands';
 import { ZakaznikPage, ProductDetail } from './Zakaznik';
 import { SuppliesPage } from './Supplies';
@@ -31,16 +31,24 @@ export default function App() {
   const [brandId, setBrandId] = useState<number | null>(null);
   const [detailProductId, setDetailProductId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
-    const [brands, products, sales, periods, stocks, supplies, orders, priceHistory, salesLogs, s] = await Promise.all([
-      db.brands.toArray(), db.products.toArray(), db.sales.toArray(), db.periods.toArray(),
-      db.stocks.toArray(), db.supplies.toArray(), db.orders.toArray(), db.priceHistory.toArray(),
-      db.salesLog.toArray(), getSettings(),
-    ]);
-    setData({ brands, products, sales, periods, stocks, supplies, orders, priceHistory, salesLogs });
-    setSettings(s);
-    setLoading(false);
+    try {
+      await initDB();
+      const [brands, products, sales, periods, stocks, supplies, orders, priceHistory, salesLogs, s] = await Promise.all([
+        db.brands.toArray(), db.products.toArray(), db.sales.toArray(), db.periods.toArray(),
+        db.stocks.toArray(), db.supplies.toArray(), db.orders.toArray(), db.priceHistory.toArray(),
+        db.salesLog.toArray(), getSettings(),
+      ]);
+      setData({ brands, products, sales, periods, stocks, supplies, orders, priceHistory, salesLogs });
+      setSettings(s);
+      setDbError(null);
+    } catch (e: any) {
+      setDbError(e?.message || 'Не удалось открыть локальную базу данных.');
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { reload(); }, [reload]);
@@ -48,7 +56,20 @@ export default function App() {
   const brand = useMemo(() => data.brands.find((b) => b.id === brandId) ?? null, [data.brands, brandId]);
   const detailProduct = useMemo(() => data.products.find((p) => p.id === detailProductId) ?? null, [data.products, detailProductId]);
 
-  if (loading || !settings) return <div className="page">Загрузка данных…</div>;
+  if (loading) return <div className="page">Загрузка данных…</div>;
+
+  if (dbError || !settings) {
+    return (
+      <div className="page">
+        <div className="card" style={{ borderColor: '#c0392b' }}>
+          <h3 style={{ color: '#c0392b', marginTop: 0 }}>Ошибка загрузки данных</h3>
+          <p>{dbError || 'Не удалось получить настройки из базы данных.'}</p>
+          <p className="muted">Проверьте, что браузер разрешает сайту хранить локальные данные (IndexedDB), и что это не режим «Инкогнито». После исправления обновите страницу.</p>
+          <button onClick={() => window.location.reload()}>Обновить страницу</button>
+        </div>
+      </div>
+    );
+  }
 
   const needBrand = tab !== 'brands' && tab !== 'settings';
 

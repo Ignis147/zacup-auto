@@ -5,6 +5,25 @@ import type {
   SalesEditLog, StockSnapshot, Supply, FixedOrder, Settings, BackupData,
 } from './types';
 
+// ===== Схема БД =====
+// Индексы, объявленные как "&" (уникальные) или "[a+b]" (составные), НЕЛЬЗЯ добавлять
+// к уже существующему object store через IndexedDB versionchange — это вызывало ошибку
+// "Unable to patch indexes of table ..." и бесконечную загрузку приложения.
+// Поэтому declared schema содержит только простые индексы; уникальность штрихкода
+// обеспечивается проверкой isBarcodeTaken(), а сложные запросы — фильтрами.
+const SCHEMA_V1 = {
+  brands: '++id, name',
+  products: '++id, brandId, barcode',
+  priceHistory: '++id, productId',
+  sales: '++id, brandId, productId, period, branch',
+  periods: '++id, key, brandId, period, branch',
+  salesLog: '++id, brandId, productId',
+  stocks: '++id, brandId, productId',
+  supplies: '++id, brandId',
+  orders: '++id, brandId',
+  settings: '++id',
+};
+
 class ZakaznikDB extends Dexie {
   brands!: Table<Brand, number>;
   products!: Table<Product, number>;
@@ -19,22 +38,46 @@ class ZakaznikDB extends Dexie {
 
   constructor() {
     super('zakaznik-db');
-    this.version(1).stores({
-      brands: '++id, name',
-      products: '++id, brandId, barcode, [brandId+barcode]',
-      priceHistory: '++id, productId',
-      sales: '++id, brandId, [brandId+productId], [brandId+period], [productId+period+branch]',
-      periods: '++id, key, [brandId+period], [brandId+branch]',
-      salesLog: '++id, brandId, productId',
-      stocks: '++id, brandId, [brandId+productId]',
-      supplies: '++id, brandId',
-      orders: '++id, brandId',
-      settings: '++id',
-    });
+    // Единственная версия схемы. Для новых и старых баз она идентична по типу PK
+    // и набору простых индексов, поэтому конфликтов при открытии не возникает.
+    this.version(1).stores(SCHEMA_V1);
   }
 }
 
 export const db = new ZakaznikDB();
+
+/**
+ * Инициализация базы данных с понятной обработкой ошибок.
+ * Вызывается один раз при старте приложения (App.tsx) до первой загрузки данных.
+ */
+export async function initDB(): Promise<void> {
+  try {
+    await db.open();
+  } catch (e: any) {
+    throw friendlyDbError(e);
+  }
+}
+
+function friendlyDbError(e: any): Error {
+  const inner = e?.inner;
+  const name = inner?.name || e?.name || '';
+  if (name === 'VersionError') {
+    return new Error('База данных открыта в другой вкладке с более новой версией схемы. Закройте другие вкладки и обновите страницу.');
+  }
+  if (name === 'InvalidStateError') {
+    return new Error('Не удалось открыть локальную базу данных. Приложение не работает в режиме «Инкогнито» и при заблокированном IndexedDB.');
+  }
+  if (name === 'QuotaExceededError') {
+    return new Error('Хранилище браузера переполнено. Освободите место и обновите страницу.');
+  }
+  if (name === 'NoSuchDatabaseError') {
+    return new Error('Локальная база данных не найдена. Создайте бренд, чтобы начать работу.');
+  }
+  return new Error(
+    `Ошибка инициализации базы данных: ${e?.message || 'неизвестная ошибка'}` +
+    (inner?.message ? ` (${inner.message})` : '')
+  );
+}
 
 export const DEFAULT_SETTINGS: Omit<Settings, 'id'> = {
   orderPrepDays: 30,
@@ -70,8 +113,12 @@ export function articleFromBarcode(barcode: string): string {
 
 /** Проверка уникальности штрихкода внутри бренда */
 export async function isBarcodeTaken(brandId: number, barcode: string, exceptProductId?: number): Promise<boolean> {
-  const found = await db.products.where('[brandId+barcode]').equals([brandId, barcode.trim()]).first();
-  return !!found && found.id !== exceptProductId;
+  const bc = barcode.trim();
+  // Составной индекс не используется — запрос идёт по обычному индексу brandId + фильтр.
+  const found = await db.products.where('brandId').equals(brandId)
+    .filter((p) => p.barcode === bc && p.id !== exceptProductId)
+    .first();
+  return !!found;
 }
 
 // ===== Резервные копии =====
