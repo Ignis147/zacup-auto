@@ -89,28 +89,52 @@ export const ordersRepo = {
 
   /**
    * Установка/изменение позиции и распределения (ручной ввод QВЛК/QМСК в единицах товара).
-   * Для черновика — свободно. Утверждённый заказ неизменяем (§18). Живая поставка: запрещено трогать
-   * уже ПОЛУЧЕННУЮ филиальную часть (§10) — перенос возможен только непоступившей части.
+   * Черновик — свободно. Утверждённый заказ на подготовке — свободное редактирование без причины
+   * (снимок-эталон в snapshot остаётся неизменным, изменения пишутся в аудит, §5/§18).
+   * Отправленная живая поставка (in_transit/partial) правится ТОЛЬКО через корректировки:
+   * reallocate с причиной или updateQty с причиной (§10). Уже ПОЛУЧЕННАЯ филиальная часть
+   * заблокирована для любого обычного редактирования.
    */
   async setLine(
     orderId: string, productId: string,
     qtyVLK: number, qtyMSK: number, actor = 'оператор',
   ): Promise<PurchaseOrderRow> {
+    const order = await this.mustGet(orderId);
+    // «обычное редактирование» запрещено для отправленной поставки, если ХОТЬ ОДИН филиал
+    // уже подтвердил поступление (§10). До подтверждённых прибытий поставка правится свободно —
+    // это стадия оперативной корректировки (даты/количества), снимок-эталон при этом неизменен.
+    const anyReceived = Object.values(order.allocations).some((p) => p.VLK.received || p.MSK.received);
+    if (anyReceived && ['in_transit', 'partial'].includes(order.status)) {
+      throw new Error('Отправленная поставка с подтверждённым поступлением неизменяема напрямую. Используйте корректировку (reallocate / correctQuantity с причиной).');
+    }
     return this.setLineImpl(orderId, productId, qtyVLK, qtyMSK, actor);
   },
 
-  async setLineImpl(orderId: string, productId: string, qtyVLK: number, qtyMSK: number, actor: string): Promise<PurchaseOrderRow> {
+  /** Контролируемая корректировка количества отправленной поставки (причина обязательна, §10). */
+  async correctQuantity(orderId: string, productId: string, qtyVLK: number, qtyMSK: number, reason: string, actor = 'оператор'): Promise<PurchaseOrderRow> {
+    if (!reason.trim()) throw new Error('Причина корректировки количества обязательна (аудит)');
+    const order = await this.mustGet(orderId);
+    if (!['in_transit', 'partial'].includes(order.status)) {
+      throw new Error('Корректировка с причиной предназначена для отправленных поставок; для черновика/подготовки используйте обычное редактирование');
+    }
+    return this.setLineImpl(orderId, productId, qtyVLK, qtyMSK, actor, reason);
+  },
+
+  async setLineImpl(orderId: string, productId: string, qtyVLK: number, qtyMSK: number, actor: string, correctionReason?: string): Promise<PurchaseOrderRow> {
     const order = await this.mustGet(orderId);
     if (order.status === 'completed' || order.status === 'cancelled') throw new Error('Закрытый/отменённый заказ редактировать нельзя');
     if (qtyVLK < 0 || qtyMSK < 0) throw new Error('Количество не может быть отрицательным');
-    if (order.snapshot && !['approved', 'preparing'].includes(order.status)) {
-      throw new Error('Утверждённая/живая поставка неизменяема напрямую. Используйте корректировку (updateDates / reallocate с причиной).');
+    if (correctionReason === undefined && ['in_transit', 'partial'].includes(order.status)) {
+      const anyReceived = Object.values(order.allocations).some((p) => p.VLK.received || p.MSK.received);
+      if (anyReceived) {
+        throw new Error('Отправленная поставка с подтверждённым поступлением неизменяема напрямую. Используйте корректировку (reallocate / correctQuantity с причиной).');
+      }
     }
     const prod = await db.products.get(productId);
     if (!prod) throw new Error('Товар не найден');
     if (prod.brandId !== order.brandId) throw new Error('Товар принадлежит другому бренду (изоляция данных)');
 
-    // защита полученной части
+    // защита полученной части — всегда, включая документируемые корректировки (§10)
     const prevAlloc = order.allocations[productId];
     if (prevAlloc) {
       for (const br of BRANCHES) {
@@ -138,7 +162,7 @@ export const ordersRepo = {
     const after = { ...order, lines, allocations, updatedAt: nowISO(), updatedBy: actor };
     await db.transaction('rw', db.orders, db.audit, async () => {
       await db.orders.put(after);
-      await writeAudit(db, { brandId: order.brandId, entity: 'order', entityId: orderId, action: 'set-line', details: `Позиция ${prod.barcode}: ВЛК=${qtyVLK}, МСК=${qtyMSK}${calc.priceError ? `; ОШИБКА ЦЕНЫ: ${calc.priceError}` : ''}`, before: order, after });
+      await writeAudit(db, { brandId: order.brandId, entity: 'order', entityId: orderId, action: correctionReason ? 'correct-qty' : 'set-line', details: `${correctionReason ? `КОРРЕКТИРОВКА (${correctionReason}): ` : ''}Позиция ${prod.barcode}: ВЛК=${qtyVLK}, МСК=${qtyMSK}${calc.priceError ? `; ОШИБКА ЦЕНЫ: ${calc.priceError}` : ''}`, before: order, after });
     });
     return after;
   },
