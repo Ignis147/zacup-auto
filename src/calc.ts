@@ -4,7 +4,7 @@
 
 import type {
   Branch, Brand, Settings, Product, SalesRecord, PeriodStatus,
-  StockSnapshot, Supply, PriceTier, Currency,
+  StockSnapshot, Supply, SupplyItem, PriceTier, Currency,
 } from './types';
 
 export const BRANCHES: Branch[] = ['vld', 'msk'];
@@ -466,6 +466,55 @@ export function incomingQtyForProduct(
   const overdue = ev.filter((e) => e.overdue).reduce((a, e) => a + e.qty, 0);
   const nearest = ev.filter((e) => e.date >= snapshotDate).map((e) => e.date).sort()[0] ?? null;
   return { incoming, overdue, nearest };
+}
+
+// ---------- Стоимость поставки ----------
+
+/** Итоговая цена за штуку позиции (undefined, если цена ещё не задана) */
+export function supplyItemUnitPrice(it: SupplyItem): number | undefined {
+  return typeof it.unitPrice === 'number' && Number.isFinite(it.unitPrice) && it.unitPrice >= 0
+    ? it.unitPrice : undefined;
+}
+
+/** Сумма позиции = общее количество × закупочная цена за единицу */
+export function supplyItemSum(it: SupplyItem): number | null {
+  const price = supplyItemUnitPrice(it);
+  if (price === undefined) return null;
+  return Math.max(0, it.totalQty) * price;
+}
+
+export interface SupplyCost {
+  known: boolean;      // true — цены заданы для всех непустых позиций
+  totalSum: number;    // стоимость в валюте прайса бренда (по позициям с известной ценой)
+  missingCount: number; // количество позиций без цены
+}
+
+/** Общая стоимость поставки = сумма стоимости всех товарных позиций.
+ *  Позиции без сохранённой цены в сумму не входят (они помечены отдельно). */
+export function supplyTotalCost(sup: Supply): SupplyCost {
+  let totalSum = 0, known = true, missingCount = 0;
+  for (const it of sup.items) {
+    const s = supplyItemSum(it);
+    if (s === null) {
+      if (it.totalQty > 0) { known = false; missingCount++; }
+      continue;
+    }
+    totalSum += s;
+  }
+  return { known, totalSum, missingCount };
+}
+
+/** Автозаполнение цен из товарной матрицы (с учётом ступенчатой цены по общему
+ *  количеству коробок артикула в поставке). Уже сохранённые вручную цены НЕ перезаписываются. */
+export function fillSupplyPricesFromMatrix(items: SupplyItem[], products: Product[]): SupplyItem[] {
+  return items.map((it) => {
+    if (supplyItemUnitPrice(it) !== undefined) return it; // не перезаписываем сохранённые цены
+    const p = products.find((x) => x.id === it.productId);
+    if (!p) return it;
+    const boxes = it.totalQty > 0 ? Math.floor(boxesFor(it.totalQty, p.packSize) + 1e-9) : 0;
+    const price = appliedPrice(p, boxes);
+    return price === null ? it : { ...it, unitPrice: price };
+  });
 }
 
 // ---------- Распределение между филиалами ----------

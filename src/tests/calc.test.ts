@@ -7,6 +7,7 @@ import {
   redistribute, appliedPrice, isMultiple, boxesFor, roundUpToPack, convert,
   plannedDatesFromOrder, effectiveLogistics, totalLeadDays, recommendOrder, calcOrderLine,
   incomingQtyForProduct, todayISO, addDays,
+  supplyItemUnitPrice, supplyItemSum, supplyTotalCost, fillSupplyPricesFromMatrix,
 } from '../calc';
 import { db, articleFromBarcode, exportBackup, restoreBackup, validateBackup, DEFAULT_SETTINGS } from '../db';
 
@@ -462,5 +463,144 @@ describe('Резервные копии', () => {
     expect(validateBackup({})).not.toBeNull();
     expect(validateBackup({ app: 'other', version: 1, tables: {} })).not.toBeNull();
     expect(validateBackup(null)).not.toBeNull();
+  });
+});
+
+// ===== Стоимость поставок (закупочные цены) =====
+
+function makeSupply(over: Partial<Supply> = {}): Supply {
+  return {
+    id: 500, brandId: BRAND_ID, number: 'Тестовая поставка', status: 'ordered',
+    orderDate: '2026-07-01', departDate: '2026-08-01',
+    vldPlannedDate: '2026-10-01', mskPlannedDate: '2026-10-21',
+    items: [], createdAt: '', ...over,
+  };
+}
+
+describe('Стоимость поставки: расчёты', () => {
+  it('сумма позиции = общее количество × цена за шт., итог = сумма позиций', () => {
+    const sup = makeSupply({ items: [
+      { productId: 1, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0, unitPrice: 1000 },
+      { productId: 2, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0, unitPrice: 2500.5 },
+    ] });
+    expect(supplyItemSum(sup.items[0])).toBe(168000);
+    expect(supplyItemSum(sup.items[1])).toBeCloseTo(270054, 6);
+    const cost = supplyTotalCost(sup);
+    expect(cost.known).toBe(true);
+    expect(cost.missingCount).toBe(0);
+    expect(cost.totalSum).toBeCloseTo(438054, 6);
+  });
+
+  it('позиции без цены не входят в итог и помечаются как отсутствующие', () => {
+    const sup = makeSupply({ items: [
+      { productId: 1, totalQty: 10, vldQty: 10, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: 100 },
+      { productId: 2, totalQty: 20, vldQty: 0, mskQty: 20, vldReceived: 0, mskReceived: 0 },
+    ] });
+    const cost = supplyTotalCost(sup);
+    expect(cost.known).toBe(false);
+    expect(cost.missingCount).toBe(1);
+    expect(cost.totalSum).toBe(1000);
+  });
+
+  it('некорректные значения цены (NaN, отрицательные) считаются ненастроенными', () => {
+    expect(supplyItemUnitPrice({ productId: 1, totalQty: 5, vldQty: 5, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: NaN })).toBeUndefined();
+    expect(supplyItemUnitPrice({ productId: 1, totalQty: 5, vldQty: 5, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: -1 })).toBeUndefined();
+    expect(supplyItemUnitPrice({ productId: 1, totalQty: 5, vldQty: 5, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: 0 })).toBe(0);
+  });
+
+  it('ступенчатая цена: автозаполнение по общему количеству коробок артикула в поставке', () => {
+    const tiers: PriceTier[] = [
+      { minBoxes: 1, price: 1000 },
+      { minBoxes: 5, price: 900 },
+      { minBoxes: 10, price: 800 },
+    ];
+    const prod = makeProduct({ id: 10, packSize: 12, priceKind: 'tiered', fixedPrice: undefined, tiers });
+    // 48 шт = 4 коробки → ступень «от 1» = 1000
+    const a = fillSupplyPricesFromMatrix(
+      [{ productId: 10, totalQty: 48, vldQty: 24, mskQty: 24, vldReceived: 0, mskReceived: 0 }], [prod]);
+    expect(a[0].unitPrice).toBe(1000);
+    // 120 шт = 10 коробок → ступень «от 10» = 800
+    const b = fillSupplyPricesFromMatrix(
+      [{ productId: 10, totalQty: 120, vldQty: 60, mskQty: 60, vldReceived: 0, mskReceived: 0 }], [prod]);
+    expect(b[0].unitPrice).toBe(800);
+  });
+
+  it('fillSupplyPricesFromMatrix НЕ перезаписывает уже сохранённые цены (в т.ч. ручные)', () => {
+    const prod = makeProduct({ id: 10, fixedPrice: 1200 });
+    const filled = fillSupplyPricesFromMatrix(
+      [{ productId: 10, totalQty: 24, vldQty: 12, mskQty: 12, vldReceived: 0, mskReceived: 0, unitPrice: 999 }], [prod]);
+    expect(filled[0].unitPrice).toBe(999);
+  });
+
+  it('ручная цена сохраняется после записи в IndexedDB и повторного чтения (перезагрузка приложения)', async () => {
+    const sup = makeSupply({ id: 901, items: [
+      { productId: 10, totalQty: 24, vldQty: 12, mskQty: 12, vldReceived: 0, mskReceived: 0, unitPrice: 777 },
+    ] });
+    await db.supplies.put(sup);
+    const reloaded = await db.supplies.get(901);
+    expect(reloaded).toBeDefined();
+    expect(reloaded!.items[0].unitPrice).toBe(777);
+    expect(supplyTotalCost(reloaded!).totalSum).toBe(24 * 777);
+    // изменение прайса в матрице не меняет стоимость сохранённой поставки
+    const cheaper = makeProduct({ id: 10, fixedPrice: 500 });
+    const refilled = fillSupplyPricesFromMatrix(reloaded!.items, [cheaper]);
+    expect(refilled[0].unitPrice).toBe(777);
+    await db.supplies.delete(901);
+  });
+
+  it('экспорт и восстановление резервной копии сохраняет закупочные цены', async () => {
+    const sup = makeSupply({ id: 902, items: [
+      { productId: 11, totalQty: 100, vldQty: 50, mskQty: 50, vldReceived: 0, mskReceived: 0, unitPrice: 1500 },
+    ] });
+    await db.supplies.put(sup);
+    const backup = await exportBackup();
+    await db.supplies.delete(902);
+    expect(await db.supplies.get(902)).toBeUndefined();
+    await restoreBackup(backup);
+    const restored = await db.supplies.get(902);
+    expect(restored).toBeDefined();
+    expect(restored!.items[0].unitPrice).toBe(1500);
+    expect(restored!.items[0].totalQty).toBe(100);
+    expect(supplyTotalCost(restored!).totalSum).toBe(150000);
+    await db.supplies.delete(902);
+  });
+
+  it('конвертация итога поставки в рубли по курсам настроек (KRW и USD)', () => {
+    const rates = { usdRub: 90, krwRub: 0.07 };
+    // KRW-поставка: 168×1000 + 108×2500 = 438000 ₩ → ₽
+    const supKr = makeSupply({ items: [
+      { productId: 1, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0, unitPrice: 1000 },
+      { productId: 2, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0, unitPrice: 2500 },
+    ] });
+    const sumKr = supplyTotalCost(supKr).totalSum;
+    expect(sumKr).toBe(438000);
+    expect(convert(sumKr, 'KRW', rates).rub).toBeCloseTo(30660, 6);
+    // USD-поставка
+    const supUsd = makeSupply({ items: [
+      { productId: 3, totalQty: 30, vldQty: 15, mskQty: 15, vldReceived: 0, mskReceived: 0, unitPrice: 12.5 },
+    ] });
+    expect(convert(supplyTotalCost(supUsd).totalSum, 'USD', rates).rub).toBeCloseTo(33750, 6);
+  });
+
+  it('стоимость поставки не влияет на количества, поступления и прогноз ("В пути")', () => {
+    const future = addDays(todayISO(), 60);
+    const sup = makeSupply({
+      vldPlannedDate: future, mskPlannedDate: future,
+      items: [
+        { productId: 1, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0, unitPrice: 1000 },
+        { productId: 2, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0, unitPrice: 2500 },
+      ],
+    });
+    // привязка строго по productId: товар 1 получает только свои количества, а не всю поставку
+    expect(incomingQtyForProduct([sup], 'vld', todayISO(), false, 1).incoming).toBe(84);
+    expect(incomingQtyForProduct([sup], 'msk', todayISO(), false, 1).incoming).toBe(84);
+    expect(incomingQtyForProduct([sup], 'vld', todayISO(), false, 2).incoming).toBe(72);
+    expect(incomingQtyForProduct([sup], 'msk', todayISO(), false, 2).incoming).toBe(36);
+    // события содержат только количества (qty), цены игнорируются
+    const evs = collectReceipts([sup], 'vld', todayISO(), false, 1);
+    expect(evs.reduce((a, e) => a + e.qty, 0)).toBe(84);
+    expect(sup.items.map((i) => i.totalQty)).toEqual([168, 108]);
+    expect(sup.items.map((i) => i.vldQty)).toEqual([84, 72]);
+    expect(sup.items.map((i) => i.mskQty)).toEqual([84, 36]);
   });
 });
