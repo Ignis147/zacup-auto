@@ -4,7 +4,7 @@
 
 import type {
   Branch, Brand, Settings, Product, SalesRecord, PeriodStatus,
-  StockSnapshot, Supply, PriceTier, Currency,
+  StockSnapshot, Supply, SupplyItem, PriceTier, Currency,
 } from './types';
 
 export const BRANCHES: Branch[] = ['vld', 'msk'];
@@ -397,19 +397,29 @@ export function buildForecast(
  * @param branch          филиал
  * @param snapshotDate    дата снимка остатков
  * @param receiptsIncluded подтверждено ли, что полученные поставки уже учтены в остатках
+ * @param productId       (необязательно) учитывать исключительно строки поставки этого товара.
+ *                        Агрегация строго по productId: товары одной поставки или всего бренда
+ *                        никогда не суммируются в одно событие.
  *
  * Правила:
+ * - Каждое событие жёстко привязано к productId строки поставки (it.productId).
  * - Полученная часть (receivedQty) исключается из ожидаемого поступления всегда.
  * - Если receiptsIncluded=true, полностью полученные ДО даты снимка поставки не учитываются
  *   (они уже в остатке). Если false — факт поступления отражён отдельно, и в прогноз
  *   попадает только неожидаемая часть; уже полученные количества в прогноз не включаются.
  * - Просроченные (план в прошлом, факт не подтверждён) помечаются overdue и показываются отдельно.
+ * - Объединяются в одно события только поступления одного и того же товара с одинаковой датой
+ *   (в том числе из разных поставок); разные артикулы не смешиваются никогда.
  */
-export function collectReceipts(supplies: Supply[], branch: Branch, snapshotDate: string, receiptsIncluded: boolean): ReceiptEvent[] {
+export function collectReceipts(
+  supplies: Supply[], branch: Branch, snapshotDate: string, receiptsIncluded: boolean,
+  productId?: number,
+): ReceiptEvent[] {
   const events: ReceiptEvent[] = [];
   for (const sup of supplies) {
     if (sup.status === 'cancelled') continue;
     for (const it of sup.items) {
+      if (productId !== undefined && it.productId !== productId) continue;
       const expected = branch === 'vld' ? it.vldQty : it.mskQty;
       const received = branch === 'vld' ? it.vldReceived : it.mskReceived;
       const actualDate = branch === 'vld' ? it.vldActualDate : it.mskActualDate;
@@ -430,18 +440,81 @@ export function collectReceipts(supplies: Supply[], branch: Branch, snapshotDate
       }
     }
   }
-  // суммируем поступления с одинаковой датой (хронологический порядок задаёт buildForecast)
-  const byDate = new Map<string, ReceiptEvent>();
+  // суммируем поступления одного и того же товара с одинаковой датой
+  // (хронологический порядок задаёт buildForecast)
+  const byKey = new Map<string, ReceiptEvent>();
   for (const e of events) {
-    const ex = byDate.get(e.date);
+    const key = `${e.productId}|${e.date}`;
+    const ex = byKey.get(key);
     if (ex) {
       ex.qty += e.qty;
       ex.overdue = ex.overdue || e.overdue;
     } else {
-      byDate.set(e.date, { ...e });
+      byKey.set(key, { ...e });
     }
   }
-  return [...byDate.values()];
+  return [...byKey.values()];
+}
+
+/** Сумма ожидаемых поступлений конкретного товара по филиалу (уже полученные не учитываются) */
+export function incomingQtyForProduct(
+  supplies: Supply[], branch: Branch, snapshotDate: string, receiptsIncluded: boolean,
+  productId: number, asOfToday: string = todayISO(),
+): { incoming: number; overdue: number; nearest: string | null } {
+  const ev = collectReceipts(supplies, branch, snapshotDate, receiptsIncluded, productId);
+  const incoming = ev.filter((e) => !e.overdue && e.date >= asOfToday).reduce((a, e) => a + e.qty, 0);
+  const overdue = ev.filter((e) => e.overdue).reduce((a, e) => a + e.qty, 0);
+  const nearest = ev.filter((e) => e.date >= snapshotDate).map((e) => e.date).sort()[0] ?? null;
+  return { incoming, overdue, nearest };
+}
+
+// ---------- Стоимость поставки ----------
+
+/** Итоговая цена за штуку позиции (undefined, если цена ещё не задана) */
+export function supplyItemUnitPrice(it: SupplyItem): number | undefined {
+  return typeof it.unitPrice === 'number' && Number.isFinite(it.unitPrice) && it.unitPrice >= 0
+    ? it.unitPrice : undefined;
+}
+
+/** Сумма позиции = общее количество × закупочная цена за единицу */
+export function supplyItemSum(it: SupplyItem): number | null {
+  const price = supplyItemUnitPrice(it);
+  if (price === undefined) return null;
+  return Math.max(0, it.totalQty) * price;
+}
+
+export interface SupplyCost {
+  known: boolean;      // true — цены заданы для всех непустых позиций
+  totalSum: number;    // стоимость в валюте прайса бренда (по позициям с известной ценой)
+  missingCount: number; // количество позиций без цены
+}
+
+/** Общая стоимость поставки = сумма стоимости всех товарных позиций.
+ *  Позиции без сохранённой цены в сумму не входят (они помечены отдельно). */
+export function supplyTotalCost(sup: Supply): SupplyCost {
+  let totalSum = 0, known = true, missingCount = 0;
+  for (const it of sup.items) {
+    const s = supplyItemSum(it);
+    if (s === null) {
+      if (it.totalQty > 0) { known = false; missingCount++; }
+      continue;
+    }
+    totalSum += s;
+  }
+  return { known, totalSum, missingCount };
+}
+
+/** Автозаполнение цен из товарной матрицы (с учётом ступенчатой цены по общему
+ *  количеству коробок артикула в поставке). Уже сохранённые вручную цены НЕ перезаписываются. */
+export function fillSupplyPricesFromMatrix(items: SupplyItem[], products: Product[]): SupplyItem[] {
+  return items.map((it) => {
+    if (supplyItemUnitPrice(it) !== undefined) return it; // не перезаписываем сохранённые цены
+    const p = products.find((x) => x.id === it.productId);
+    if (!p) return it;
+    const boxes = it.totalQty > 0 ? Math.floor(boxesFor(it.totalQty, p.packSize) + 1e-9) : 0;
+    const price = appliedPrice(p, boxes);
+    return price === null ? it : { ...it, unitPrice: price };
+  });
 }
 
 // ---------- Распределение между филиалами ----------

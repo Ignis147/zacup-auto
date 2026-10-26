@@ -110,6 +110,10 @@ export interface SupplyItem {
   mskReceived: number;       // получено в Москве (факт)
   vldActualDate?: string;
   mskActualDate?: string;
+  /** Закупочная цена за единицу в валюте прайса бренда, зафиксированная для этой поставки.
+   *  Изменяется вручную в карточке поставки и НЕ влияет на товарную матрицу.
+   *  Отсутствует у поставок, созданных до появления функциональности стоимости. */
+  unitPrice?: number;
 }
 
 export interface Supply {

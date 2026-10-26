@@ -6,6 +6,8 @@ import {
   calcSdp, buildClosedMap, calcStockMonths, buildForecast, collectReceipts,
   redistribute, appliedPrice, isMultiple, boxesFor, roundUpToPack, convert,
   plannedDatesFromOrder, effectiveLogistics, totalLeadDays, recommendOrder, calcOrderLine,
+  incomingQtyForProduct, todayISO, addDays,
+  supplyItemUnitPrice, supplyItemSum, supplyTotalCost, fillSupplyPricesFromMatrix,
 } from '../calc';
 import { db, articleFromBarcode, exportBackup, restoreBackup, validateBackup, DEFAULT_SETTINGS } from '../db';
 
@@ -313,6 +315,101 @@ describe('Тест 15. Поставки с одинаковой датой', () 
   });
 });
 
+describe('Регрессия: привязка поставок к товарам в главной таблице (строго по productId)', () => {
+  // Реальные данные поставки «Выход июля»: три разных артикула в одной поставке.
+  const P193 = 193, P353 = 353, P209 = 209; // id товаров фиксированы тестом
+  const julSupply: Supply = {
+    id: 501, brandId: BRAND_ID, number: 'Выход июля', status: 'in_transit',
+    orderDate: '2026-05-01', departDate: '2026-06-01',
+    vldPlannedDate: addDays(todayISO(), 30), mskPlannedDate: addDays(todayISO(), 50),
+    createdAt: '2026-05-01',
+    items: [
+      { productId: P193, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0 },
+      { productId: P353, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0 },
+      { productId: P209, totalQty: 300, vldQty: 120, mskQty: 180, vldReceived: 0, mskReceived: 0 },
+    ],
+  };
+
+  it('вторая строка поставки не получает количества всей поставки или других артикулов', () => {
+    const asOf = todayISO();
+    // Каждый артикул видит только своё количество — как в карточке поставки.
+    expect(incomingQtyForProduct([julSupply], 'vld', asOf, true, P193).incoming).toBe(84);
+    expect(incomingQtyForProduct([julSupply], 'msk', asOf, true, P193).incoming).toBe(84);
+    expect(incomingQtyForProduct([julSupply], 'vld', asOf, true, P353).incoming).toBe(72);
+    expect(incomingQtyForProduct([julSupply], 'msk', asOf, true, P353).incoming).toBe(36);
+    expect(incomingQtyForProduct([julSupply], 'vld', asOf, true, P209).incoming).toBe(120);
+    expect(incomingQtyForProduct([julSupply], 'msk', asOf, true, P209).incoming).toBe(180);
+  });
+
+  it('исключена сумма всех остальных товаров поставки (старый баг: 1089 / 971 вместо 84 / 84)', () => {
+    const asOf = todayISO();
+    const badVld = julSupply.items.filter((i) => i.productId !== P193)
+      .reduce((a, i) => a + i.vldQty + i.mskQty, 0); // 108 + 300 → часть «чужих» сумм
+    const res = incomingQtyForProduct([julSupply], 'vld', asOf, true, P193);
+    expect(res.incoming).not.toBe(badVld);
+    expect(res.incoming).toBe(84);
+    // Сумма по всем артикулам равна сумме по поставке и не задваивается
+    const all = ['vld', 'msk'].map((b) =>
+      [P193, P353, P209].reduce((a, pid) => a + incomingQtyForProduct([julSupply], b as any, asOf, true, pid).incoming, 0));
+    expect(all).toEqual([276, 300]); // ВЛД 84+72+120, МСК 84+36+180
+  });
+
+  it('несколько поставок: количества одного товара суммируются по поставкам, разные артикулы не смешиваются', () => {
+    const asOf = todayISO();
+    const aug: Supply = {
+      ...julSupply, id: 502, number: 'Август',
+      items: [
+        { productId: P193, totalQty: 48, vldQty: 24, mskQty: 24, vldReceived: 0, mskReceived: 0 },
+        { productId: P353, totalQty: 60, vldQty: 60, mskQty: 0, vldReceived: 0, mskReceived: 0 },
+      ],
+    };
+    expect(incomingQtyForProduct([julSupply, aug], 'vld', asOf, true, P193).incoming).toBe(84 + 24);
+    expect(incomingQtyForProduct([julSupply, aug], 'msk', asOf, true, P193).incoming).toBe(84 + 24);
+    expect(incomingQtyForProduct([julSupply, aug], 'vld', asOf, true, P353).incoming).toBe(72 + 60);
+    expect(incomingQtyForProduct([julSupply, aug], 'msk', asOf, true, P209).incoming).toBe(180);
+  });
+
+  it('уже полученные количества не учитываются как находящиеся в пути', () => {
+    const asOf = todayISO();
+    const partial: Supply = {
+      ...julSupply, id: 503, number: 'Частичная', status: 'partial',
+      items: [
+        { productId: P193, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 84, mskReceived: 34, vldActualDate: '2026-07-10' },
+        { productId: P209, totalQty: 300, vldQty: 120, mskQty: 180, vldReceived: 0, mskReceived: 0 },
+      ],
+    };
+    expect(incomingQtyForProduct([partial], 'vld', asOf, true, P193).incoming).toBe(0);   // всё получено
+    expect(incomingQtyForProduct([partial], 'msk', asOf, true, P193).incoming).toBe(50);  // 84 − 34
+    expect(incomingQtyForProduct([partial], 'vld', asOf, true, P209).incoming).toBe(120); // соседний товар не затронут
+  });
+
+  it('collectReceipts с productId возвращает события только этого товара; объединение — только один товар и дата', () => {
+    const asOf = todayISO();
+    const ev = collectReceipts([julSupply], 'vld', asOf, true, P353);
+    expect(ev.length).toBe(1);
+    expect(ev[0].productId).toBe(P353);
+    expect(ev[0].qty).toBe(72);
+    // две поставки одного товара с одинаковой плановой датой суммируются в одно событие
+    const same: Supply = { ...julSupply, id: 504, items: [{ productId: P209, totalQty: 100, vldQty: 100, mskQty: 0, vldReceived: 0, mskReceived: 0 }] };
+    const ev2 = collectReceipts([julSupply, same], 'vld', asOf, true, P209);
+    expect(ev2.length).toBe(1);
+    expect(ev2[0].qty).toBe(220);
+  });
+
+  it('прогноз и рекомендация нового заказа используют только количества своего артикула', () => {
+    const asOf = todayISO();
+    const horizon = addDays(asOf, 110);
+    // Товару P353 прогнозируется поступление 72 во ВЛД, а не вся поставка (576/…)
+    const receipts = collectReceipts([julSupply], 'vld', asOf, true, P353);
+    const f = buildForecast(asOf, 0, 1, receipts, horizon);
+    expect(f.points.reduce((a, p) => a + p.receiptQty, 0)).toBe(72);
+    // Рекомендация: цель 3 мес × 30 × СДП 1 = 90 минус прогноз перед поступлением (0) → 90
+    const fcBefore = f.stockAtDate(horizon);
+    const rec = recommendOrder({ sdp: 1, forecastStockBefore: fcBefore, packSize: 12, targetMonths: 3 });
+    expect(rec.recommended).toBe(96); // округление вверх до коробок по 12
+  });
+});
+
 describe('Прочие ключевые функции', () => {
   it('артикул = последние 6 символов штрихкода, ведущие нули сохраняются', () => {
     expect(articleFromBarcode('8801234567890')).toBe('567890');
@@ -366,5 +463,144 @@ describe('Резервные копии', () => {
     expect(validateBackup({})).not.toBeNull();
     expect(validateBackup({ app: 'other', version: 1, tables: {} })).not.toBeNull();
     expect(validateBackup(null)).not.toBeNull();
+  });
+});
+
+// ===== Стоимость поставок (закупочные цены) =====
+
+function makeSupply(over: Partial<Supply> = {}): Supply {
+  return {
+    id: 500, brandId: BRAND_ID, number: 'Тестовая поставка', status: 'ordered',
+    orderDate: '2026-07-01', departDate: '2026-08-01',
+    vldPlannedDate: '2026-10-01', mskPlannedDate: '2026-10-21',
+    items: [], createdAt: '', ...over,
+  };
+}
+
+describe('Стоимость поставки: расчёты', () => {
+  it('сумма позиции = общее количество × цена за шт., итог = сумма позиций', () => {
+    const sup = makeSupply({ items: [
+      { productId: 1, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0, unitPrice: 1000 },
+      { productId: 2, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0, unitPrice: 2500.5 },
+    ] });
+    expect(supplyItemSum(sup.items[0])).toBe(168000);
+    expect(supplyItemSum(sup.items[1])).toBeCloseTo(270054, 6);
+    const cost = supplyTotalCost(sup);
+    expect(cost.known).toBe(true);
+    expect(cost.missingCount).toBe(0);
+    expect(cost.totalSum).toBeCloseTo(438054, 6);
+  });
+
+  it('позиции без цены не входят в итог и помечаются как отсутствующие', () => {
+    const sup = makeSupply({ items: [
+      { productId: 1, totalQty: 10, vldQty: 10, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: 100 },
+      { productId: 2, totalQty: 20, vldQty: 0, mskQty: 20, vldReceived: 0, mskReceived: 0 },
+    ] });
+    const cost = supplyTotalCost(sup);
+    expect(cost.known).toBe(false);
+    expect(cost.missingCount).toBe(1);
+    expect(cost.totalSum).toBe(1000);
+  });
+
+  it('некорректные значения цены (NaN, отрицательные) считаются ненастроенными', () => {
+    expect(supplyItemUnitPrice({ productId: 1, totalQty: 5, vldQty: 5, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: NaN })).toBeUndefined();
+    expect(supplyItemUnitPrice({ productId: 1, totalQty: 5, vldQty: 5, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: -1 })).toBeUndefined();
+    expect(supplyItemUnitPrice({ productId: 1, totalQty: 5, vldQty: 5, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: 0 })).toBe(0);
+  });
+
+  it('ступенчатая цена: автозаполнение по общему количеству коробок артикула в поставке', () => {
+    const tiers: PriceTier[] = [
+      { minBoxes: 1, price: 1000 },
+      { minBoxes: 5, price: 900 },
+      { minBoxes: 10, price: 800 },
+    ];
+    const prod = makeProduct({ id: 10, packSize: 12, priceKind: 'tiered', fixedPrice: undefined, tiers });
+    // 48 шт = 4 коробки → ступень «от 1» = 1000
+    const a = fillSupplyPricesFromMatrix(
+      [{ productId: 10, totalQty: 48, vldQty: 24, mskQty: 24, vldReceived: 0, mskReceived: 0 }], [prod]);
+    expect(a[0].unitPrice).toBe(1000);
+    // 120 шт = 10 коробок → ступень «от 10» = 800
+    const b = fillSupplyPricesFromMatrix(
+      [{ productId: 10, totalQty: 120, vldQty: 60, mskQty: 60, vldReceived: 0, mskReceived: 0 }], [prod]);
+    expect(b[0].unitPrice).toBe(800);
+  });
+
+  it('fillSupplyPricesFromMatrix НЕ перезаписывает уже сохранённые цены (в т.ч. ручные)', () => {
+    const prod = makeProduct({ id: 10, fixedPrice: 1200 });
+    const filled = fillSupplyPricesFromMatrix(
+      [{ productId: 10, totalQty: 24, vldQty: 12, mskQty: 12, vldReceived: 0, mskReceived: 0, unitPrice: 999 }], [prod]);
+    expect(filled[0].unitPrice).toBe(999);
+  });
+
+  it('ручная цена сохраняется после записи в IndexedDB и повторного чтения (перезагрузка приложения)', async () => {
+    const sup = makeSupply({ id: 901, items: [
+      { productId: 10, totalQty: 24, vldQty: 12, mskQty: 12, vldReceived: 0, mskReceived: 0, unitPrice: 777 },
+    ] });
+    await db.supplies.put(sup);
+    const reloaded = await db.supplies.get(901);
+    expect(reloaded).toBeDefined();
+    expect(reloaded!.items[0].unitPrice).toBe(777);
+    expect(supplyTotalCost(reloaded!).totalSum).toBe(24 * 777);
+    // изменение прайса в матрице не меняет стоимость сохранённой поставки
+    const cheaper = makeProduct({ id: 10, fixedPrice: 500 });
+    const refilled = fillSupplyPricesFromMatrix(reloaded!.items, [cheaper]);
+    expect(refilled[0].unitPrice).toBe(777);
+    await db.supplies.delete(901);
+  });
+
+  it('экспорт и восстановление резервной копии сохраняет закупочные цены', async () => {
+    const sup = makeSupply({ id: 902, items: [
+      { productId: 11, totalQty: 100, vldQty: 50, mskQty: 50, vldReceived: 0, mskReceived: 0, unitPrice: 1500 },
+    ] });
+    await db.supplies.put(sup);
+    const backup = await exportBackup();
+    await db.supplies.delete(902);
+    expect(await db.supplies.get(902)).toBeUndefined();
+    await restoreBackup(backup);
+    const restored = await db.supplies.get(902);
+    expect(restored).toBeDefined();
+    expect(restored!.items[0].unitPrice).toBe(1500);
+    expect(restored!.items[0].totalQty).toBe(100);
+    expect(supplyTotalCost(restored!).totalSum).toBe(150000);
+    await db.supplies.delete(902);
+  });
+
+  it('конвертация итога поставки в рубли по курсам настроек (KRW и USD)', () => {
+    const rates = { usdRub: 90, krwRub: 0.07 };
+    // KRW-поставка: 168×1000 + 108×2500 = 438000 ₩ → ₽
+    const supKr = makeSupply({ items: [
+      { productId: 1, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0, unitPrice: 1000 },
+      { productId: 2, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0, unitPrice: 2500 },
+    ] });
+    const sumKr = supplyTotalCost(supKr).totalSum;
+    expect(sumKr).toBe(438000);
+    expect(convert(sumKr, 'KRW', rates).rub).toBeCloseTo(30660, 6);
+    // USD-поставка
+    const supUsd = makeSupply({ items: [
+      { productId: 3, totalQty: 30, vldQty: 15, mskQty: 15, vldReceived: 0, mskReceived: 0, unitPrice: 12.5 },
+    ] });
+    expect(convert(supplyTotalCost(supUsd).totalSum, 'USD', rates).rub).toBeCloseTo(33750, 6);
+  });
+
+  it('стоимость поставки не влияет на количества, поступления и прогноз ("В пути")', () => {
+    const future = addDays(todayISO(), 60);
+    const sup = makeSupply({
+      vldPlannedDate: future, mskPlannedDate: future,
+      items: [
+        { productId: 1, totalQty: 168, vldQty: 84, mskQty: 84, vldReceived: 0, mskReceived: 0, unitPrice: 1000 },
+        { productId: 2, totalQty: 108, vldQty: 72, mskQty: 36, vldReceived: 0, mskReceived: 0, unitPrice: 2500 },
+      ],
+    });
+    // привязка строго по productId: товар 1 получает только свои количества, а не всю поставку
+    expect(incomingQtyForProduct([sup], 'vld', todayISO(), false, 1).incoming).toBe(84);
+    expect(incomingQtyForProduct([sup], 'msk', todayISO(), false, 1).incoming).toBe(84);
+    expect(incomingQtyForProduct([sup], 'vld', todayISO(), false, 2).incoming).toBe(72);
+    expect(incomingQtyForProduct([sup], 'msk', todayISO(), false, 2).incoming).toBe(36);
+    // события содержат только количества (qty), цены игнорируются
+    const evs = collectReceipts([sup], 'vld', todayISO(), false, 1);
+    expect(evs.reduce((a, e) => a + e.qty, 0)).toBe(84);
+    expect(sup.items.map((i) => i.totalQty)).toEqual([168, 108]);
+    expect(sup.items.map((i) => i.vldQty)).toEqual([84, 72]);
+    expect(sup.items.map((i) => i.mskQty)).toEqual([84, 36]);
   });
 });

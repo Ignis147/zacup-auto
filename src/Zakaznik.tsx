@@ -76,6 +76,13 @@ export function ZakaznikPage({
 
   const rows: RowData[] = useMemo(() => {
     const list = products.filter((p) => !p.archived || showArchived);
+    // Привязка строк поставки к товарам строго по productId (внутренний id товара бренда).
+    // Дополнительно проверяем принадлежность строки бренду — quantities чужих товаров игнорируются.
+    const validProductIds = new Set(list.map((p) => p.id!));
+    const scopedSupplies: Supply[] = brandSupplies.map((sup) => ({
+      ...sup,
+      items: sup.items.filter((it) => typeof it.productId === 'number' && validProductIds.has(it.productId)),
+    }));
     return list.map((p) => {
       const sdpVld = calcSdp(brandSales, closedMap, p.id!, 'vld');
       const sdpMsk = calcSdp(brandSales, closedMap, p.id!, 'msk');
@@ -83,8 +90,10 @@ export function ZakaznikPage({
       const asOf = st?.asOfDate ?? todayISO();
       const startVld = st?.vld ?? 0;
       const startMsk = st?.msk ?? 0;
-      const rv = collectReceipts(brandSupplies, 'vld', asOf, receiptsIncluded).filter((e) => matches(e, p.id!));
-      const rm = collectReceipts(brandSupplies, 'msk', asOf, receiptsIncluded).filter((e) => matches(e, p.id!));
+      // Учитываем ИСКЛЮЧИТЕЛЬНО количество товара с соответствующим productId:
+      // ни весь бренд, ни вся поставка целиком в строку не суммируются.
+      const rv = collectReceipts(scopedSupplies, 'vld', asOf, receiptsIncluded, p.id!);
+      const rm = collectReceipts(scopedSupplies, 'msk', asOf, receiptsIncluded, p.id!);
       // Горизонт — дата нового заказа (или последняя поставка, если она позже)
       const horizonVld = maxDate(newVldDate, lastDate(rv));
       const horizonMsk = maxDate(newMskDate, lastDate(rm));
@@ -102,6 +111,13 @@ export function ZakaznikPage({
       return { product: p, sdpVld, sdpMsk, stock: st, receiptsVld: rv, receiptsMsk: rm, forecastVld: fVld, forecastMsk: fMsk, tzVld, tzMsk, overdueVld, overdueMsk, incomingVld, incomingMsk, nearestVld, nearestMsk };
     });
   }, [products, showArchived, brandSales, closedMap, stockMap, brandSupplies, receiptsIncluded, newVldDate, newMskDate]);
+
+  // Итоги «в пути» по бренду: сумма строго по строкам товаров (каждый productId учтён один раз).
+  const incomingTotals = useMemo(() => {
+    let vld = 0, msk = 0;
+    for (const r of rows) { vld += r.incomingVld; msk += r.incomingMsk; }
+    return { vld, msk };
+  }, [rows]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -446,7 +462,15 @@ export function ZakaznikPage({
           </tbody>
           <tfoot>
             <tr>
-              <td colSpan={4 + (groups.price ? 3 : 0) + (groups.sales ? 4 : 0) + (groups.stock ? 5 : 0) + (groups.supply ? 6 : 0)} className="num"><b>ИТОГО</b></td>
+              <td colSpan={4 + (groups.price ? 3 : 0) + (groups.sales ? 4 : 0) + (groups.stock ? 5 : 0)} className="num"><b>ИТОГО</b></td>
+              {groups.supply && <>
+                <td className="num"><b>{fmtNum(incomingTotals.vld)}</b></td>
+                <td className="num"></td>
+                <td className="num"><b>{fmtNum(incomingTotals.msk)}</b></td>
+                <td className="num"></td>
+                <td className="num"></td>
+                <td className="num"></td>
+              </>}
               {groups.order && <>
                 <td className="num"><b>{fmtNum(rows.reduce((a, r) => a + Math.max(0, Math.round(planFor(r).vld ?? 0)), 0))}</b></td>
                 <td className="num"></td>
@@ -471,10 +495,6 @@ export function ZakaznikPage({
       {addOpen && <AddProductDialog brandId={brand.id!} onClose={() => setAddOpen(false)} onDone={onChanged} />}
     </div>
   );
-}
-
-function matches(e: ReceiptEvent, productId: number): boolean {
-  return e.productId === productId;
 }
 
 function zoneClass(z: string): string {

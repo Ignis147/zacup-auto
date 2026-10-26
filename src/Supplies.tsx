@@ -1,12 +1,15 @@
 // ===== Раздел «Поставки» =====
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import type { Brand, Product, Supply, SupplyItem, Settings, SupplyStatus, FixedOrder } from './types';
 import { db } from './db';
 import {
-  fmtDate, fmtNum, plannedDatesFromOrder, effectiveLogistics,
-  redistribute, isMultiple, todayISO, addDays,
+  fmtDate, fmtNum, fmtMoney, plannedDatesFromOrder, effectiveLogistics,
+  redistribute, isMultiple, todayISO, addDays, convert, boxesFor, appliedPrice,
+  supplyItemUnitPrice, supplyItemSum, supplyTotalCost, fillSupplyPricesFromMatrix,
 } from './calc';
 import { NumCell } from './ui';
+
+const CURRENCY_SYMBOL: Record<string, string> = { KRW: '₩', USD: '$' };
 
 export const SUPPLY_STATUS_NAMES: Record<SupplyStatus, string> = {
   ordered: 'Оформлена',
@@ -61,8 +64,18 @@ export function SuppliesPage({
 
   async function saveSupply(sup: Supply) {
     const status = deriveStatus(sup);
-    if (sup.id) await db.supplies.put({ ...sup, status });
-    else await db.supplies.add({ ...sup, status });
+    // Сохраняем поставку как есть: цены, введённые пользователем (или перенесённые из заказа),
+    // не перезаписываются. Пустые/некорректные значения unitPrice не сохраняются.
+    const items = sup.items.map((it) => {
+      const price = supplyItemUnitPrice(it);
+      const copy: SupplyItem = { ...it };
+      if (price === undefined) delete copy.unitPrice;
+      else copy.unitPrice = price;
+      return copy;
+    });
+    const toSave = { ...sup, status, items };
+    if (sup.id) await db.supplies.put(toSave);
+    else await db.supplies.add(toSave);
     // если поставка создана из заказа — отмечаем заказ
     if (sup.fromOrderId) await db.orders.update(sup.fromOrderId, { supplyCreated: true });
     onChanged();
@@ -96,7 +109,7 @@ export function SuppliesPage({
             <tr>
               <th>Номер</th><th>Статус</th><th>Оформление</th><th>Выход из Кореи</th>
               <th>План ВЛД</th><th>План МСК</th><th>Факт ВЛД</th><th>Факт МСК</th>
-              <th>Товаров</th><th>Единиц</th><th></th>
+              <th>Товаров</th><th>Единиц</th><th>Стоимость</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -104,6 +117,8 @@ export function SuppliesPage({
               const facts = branchFacts(s);
               const units = s.items.reduce((a, i) => a + i.totalQty, 0);
               const st = deriveStatus(s);
+              const cost = supplyTotalCost(s);
+              const costRub = convert(cost.totalSum, brand.currency, { usdRub: settings.usdRub, krwRub: settings.krwRub }).rub;
               return (
                 <tr key={s.id}>
                   <td><b>{s.number}</b>{s.fromOrderId ? <span className="small muted"> (из заказа)</span> : null}</td>
@@ -117,11 +132,18 @@ export function SuppliesPage({
                   <td>{facts.mskDate ? `${fmtDate(facts.mskDate)} · ${fmtNum(facts.mskReceived)}/${fmtNum(sumExp(s, 'msk'))}` : `— / ${fmtNum(sumExp(s, 'msk'))}`}</td>
                   <td className="num">{s.items.length}</td>
                   <td className="num">{fmtNum(units)}</td>
+                  <td className="num" title={cost.known ? undefined : `Цены не заданы для позиций: ${cost.missingCount}. Откройте поставку и сохраните цены.`}>
+                    {cost.missingCount > 0 && cost.totalSum === 0 && !cost.known
+                      ? <span className="muted">нет цен</span>
+                      : <>{CURRENCY_SYMBOL[brand.currency]}{fmtNum(cost.totalSum)}
+                          {!cost.known && <span className="small muted"> +{cost.missingCount} без цены</span>}
+                          <div className="small muted">≈ {fmtNum(costRub)} ₽</div></>}
+                  </td>
                   <td><button className="btn small" onClick={() => setEditingId(s.id!)}>Открыть</button></td>
                 </tr>
               );
             })}
-            {filteredList.length === 0 && <tr><td colSpan={11} className="muted">Поставок нет.</td></tr>}
+            {filteredList.length === 0 && <tr><td colSpan={12} className="muted">Поставок нет.</td></tr>}
           </tbody>
         </table>
       </div>
@@ -184,22 +206,37 @@ function SupplyEditor({
   const initItems: SupplyItem[] = useMemo(() => {
     if (supply) return supply.items.map((i) => ({ ...i }));
     if (fromOrder) {
+      // Поставка из зафиксированного заказа: переносим цены, сохранённые при фиксации заказа.
       return fromOrder.lines.map((l) => ({
         productId: l.productId, totalQty: l.totalQty, vldQty: l.vldQty, mskQty: l.mskQty,
-        vldReceived: 0, mskReceived: 0,
+        vldReceived: 0, mskReceived: 0, unitPrice: l.appliedPrice,
       }));
     }
     return [];
   }, [supply, fromOrder]);
 
+  // Для новых поставок (не из заказа) автозаполняем цены из товарной матрицы.
+  const [items, setItems] = useState<SupplyItem[]>(() =>
+    isNew && !fromOrder ? fillSupplyPricesFromMatrix(initItems, products) : initItems);
   const [number, setNumber] = useState(supply?.number ?? `Поставка ${todayISO()}`);
   const [orderDate, setOrderDate] = useState(supply?.orderDate ?? todayISO());
   const [departDate, setDepartDate] = useState(supply?.departDate ?? addDays(fromOrder?.date ?? todayISO(), lg.orderPrep));
   const [vldDate, setVldDate] = useState(supply?.vldPlannedDate ?? addDays(fromOrder?.date ?? todayISO(), lg.orderPrep + lg.shipVld));
   const [mskDate, setMskDate] = useState(supply?.mskPlannedDate ?? addDays(fromOrder?.date ?? todayISO(), lg.orderPrep + lg.shipVld + lg.extraMsk));
-  const [items, setItems] = useState<SupplyItem[]>(initItems);
   const [datesTouched, setDatesTouched] = useState(!isNew);
   const [addError, setAddError] = useState('');
+  // позиции, цену которых пользователь изменил вручную в этой сессии редактирования.
+  // Заполнение при открытии карточки: если у поставки уже сохранены цены для ВСЕХ
+  // непустых позиций — считаем их зафиксированными (ручными или из заказа) и при
+  // изменении количества не пересчитываем автоматически. Если же хотя бы у одной
+  // позиции цены нет — это поставка из товарной матрицы (или legacy-поставка без
+  // цен): пустые цены автозаполняются из прайса по новым коробкам, а уже сохранённые
+  // значения остаются неприкосновенными (см. autoPrice).
+  const priceEditedRef = useRef<Set<number>>(new Set(
+    (supply?.items ?? [])
+      .filter((i) => i.totalQty > 0 && supplyItemUnitPrice(i) !== undefined)
+      .map((i) => i.productId),
+  ));
 
   function recalcDates(newOrderDate: string) {
     setOrderDate(newOrderDate);
@@ -211,6 +248,23 @@ function SupplyEditor({
 
   function patchItem(pid: number, patch: Partial<SupplyItem>) {
     setItems((prev) => prev.map((i) => (i.productId === pid ? { ...i, ...patch } : i)));
+  }
+
+  /** Ручное изменение закупочной цены в поставке (не влияет на товарную матрицу) */
+  function changePrice(pid: number, v: number | null) {
+    priceEditedRef.current.add(pid);
+    const price = v === null || !Number.isFinite(v) || v < 0 ? undefined : v;
+    setItems((prev) => prev.map((i) => (i.productId === pid ? { ...i, unitPrice: price } : i)));
+  }
+
+  /** Автоподстановка цены из матрицы при изменении количества (пока цену не меняли вручную) */
+  function autoPrice(i: SupplyItem, newTotal: number): number | undefined {
+    if (priceEditedRef.current.has(i.productId)) return i.unitPrice;
+    const p = products.find((x) => x.id === i.productId);
+    if (!p) return i.unitPrice;
+    const boxes = newTotal > 0 ? Math.floor(boxesFor(newTotal, p.packSize) + 1e-9) : 0;
+    const price = appliedPrice(p, boxes);
+    return price === null ? i.unitPrice : price;
   }
 
   function changeTotal(pid: number, total: number | null) {
@@ -231,7 +285,8 @@ function SupplyEditor({
       } else {
         nv += restTotal;
       }
-      return { ...i, totalQty: t, vldQty: nv, mskQty: nm };
+      // цена автоподставляется из матрицы по новым коробкам, пока не редактировалась вручную
+      return { ...i, totalQty: t, vldQty: nv, mskQty: nm, unitPrice: autoPrice(i, t) };
     }));
   }
 
@@ -265,7 +320,9 @@ function SupplyEditor({
     if (!p) { setAddError('Выберите товар'); return; }
     if (items.some((i) => i.productId === p.id)) { setAddError('Товар уже в поставке'); return; }
     setAddError('');
-    setItems((prev) => [...prev, { productId: p.id!, totalQty: 0, vldQty: 0, mskQty: 0, vldReceived: 0, mskReceived: 0 }]);
+    // автоподстановка закупочной цены из матрицы (fixed / ступенчатая от текущих коробок)
+    const price = appliedPrice(p, 0);
+    setItems((prev) => [...prev, { productId: p.id!, totalQty: 0, vldQty: 0, mskQty: 0, vldReceived: 0, mskReceived: 0, unitPrice: price ?? undefined }]);
   }
 
   function removeItem(pid: number) {
@@ -307,10 +364,30 @@ function SupplyEditor({
     onClose();
   }
 
+  const cur = CURRENCY_SYMBOL[brand.currency] ?? brand.currency;
+  const missingPrices = items.some((i) => i.totalQty > 0 && supplyItemUnitPrice(i) === undefined);
+  const costTotals = useMemo(() => {
+    let sum = 0;
+    for (const i of items) sum += supplyItemSum(i) ?? 0;
+    const rub = convert(sum, brand.currency, { usdRub: settings.usdRub, krwRub: settings.krwRub }).rub;
+    return { sum, rub };
+  }, [items, brand.currency, settings]);
+
+  function fillMissingPrices() {
+    setItems((prev) => prev.map((i) => {
+      if (supplyItemUnitPrice(i) !== undefined) return i; // сохранённые цены не перезаписываем
+      const p = products.find((x) => x.id === i.productId);
+      if (!p) return i;
+      const boxes = i.totalQty > 0 ? Math.floor(boxesFor(i.totalQty, p.packSize) + 1e-9) : 0;
+      const price = appliedPrice(p, boxes);
+      return price === null ? i : { ...i, unitPrice: price };
+    }));
+  }
+
   return (
     <dialog open>
       <h3>{isNew ? 'Новая поставка' : `Поставка: ${supply!.number}`}</h3>
-      {fromOrder && !supply && <div className="small muted">Создаётся из зафиксированного заказа №{fromOrder.number}. Номенклатура и количества перенесены.</div>}
+      {fromOrder && !supply && <div className="small muted">Создаётся из зафиксированного заказа №{fromOrder.number}. Номенклатура, количества и цены заказа перенесены.</div>}
       <div className="row">
         <div className="field grow"><label>Название / номер поставки</label>
           <input value={number} onChange={(e) => setNumber(e.target.value)} /></div>
@@ -331,7 +408,8 @@ function SupplyEditor({
             <tr>
               <th>Артикул</th><th>Наименование</th><th>Кратность</th>
               <th>Общее кол-во</th><th>Владивосток</th><th>Москва</th>
-              <th>Получено ВЛД</th><th>Получено МСК</th><th></th>
+              <th>Получено ВЛД</th><th>Получено МСК</th>
+              <th>Цена за шт.</th><th>Сумма</th><th></th>
             </tr>
           </thead>
           <tbody>
@@ -342,6 +420,7 @@ function SupplyEditor({
               const mskPackBad = i.mskQty > 0 && !isMultiple(i.mskQty, p.packSize);
               const overdueV = i.vldQty > i.vldReceived && vldDate < todayISO();
               const overdueM = i.mskQty > i.mskReceived && mskDate < todayISO();
+              const itemSum = supplyItemSum(i);
               return (
                 <tr key={i.productId}>
                   <td>{p.article}</td>
@@ -370,6 +449,12 @@ function SupplyEditor({
                     </div>
                     {overdueM && <span className="small overdue">просрочена</span>}
                   </td>
+                  <td className="num" style={{ width: 90 }} title={`Закупочная цена за штуку, ${brand.currency}. Можно изменить вручную — цена в товарной матрице не изменится.`}>
+                    <NumCell value={supplyItemUnitPrice(i)} onCommit={(v) => changePrice(i.productId, v)} min={0} />
+                  </td>
+                  <td className="num" style={{ width: 100 }} title="Сумма позиции = общее количество × цена за штуку">
+                    {itemSum === null ? <span className="muted small">нет цены</span> : fmtMoney(itemSum)}
+                  </td>
                   <td><button className="btn small danger" onClick={() => removeItem(i.productId!)}>Убрать</button></td>
                 </tr>
               );
@@ -392,6 +477,20 @@ function SupplyEditor({
         <div className="err small" style={{ marginTop: 6 }}>
           {validation.map((e, k) => <div key={k}>⚠ {e}</div>)}
           <div>Подтверждение поставки с некорректным распределением невозможно.</div>
+        </div>
+      )}
+
+      {/* Итоговая стоимость поставки */}
+      <div className="row" style={{ marginTop: 8 }}>
+        <span className="grow" />
+        <span className="small muted">Итого по поставке:</span>
+        <b>{cur} {fmtMoney(costTotals.sum)}</b>
+        <span className="small muted">≈ {fmtNum(costTotals.rub)} ₽</span>
+      </div>
+      {missingPrices && (
+        <div className="row small" style={{ marginTop: 2 }}>
+          <span className="overdue">⚠ Не для всех товаров задана закупочная цена — итог неполный.</span>
+          <button className="btn small" onClick={fillMissingPrices}>Заполнить цены из матрицы</button>
         </div>
       )}
 
