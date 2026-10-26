@@ -292,12 +292,12 @@ table.grid.zak-table td { border: none; }
 .zak-table .zak-th-pricekind, .zak-table .zak-td-pricekind { min-width: 90px; }   /* Тип + кнопка ✎ */
 .zak-table .zak-th-pricetiers, .zak-table .zak-td-pricetiers { width: 100px; min-width: 100px; } /* Цена / ступени */
 .zak-table .zak-th-applied,  .zak-table .zak-td-applied  { min-width: 115px; }    /* Применённая цена */
-.zak-table .zak-th-sdp,      .zak-table .zak-td-sdp      { min-width: 90px; }     /* СДП */
-.zak-table .zak-th-months,   .zak-table .zak-td-months   { min-width: 90px; }     /* Месяцы запаса */
+.zak-table .zak-th-sdp,      .zak-table .zak-td-sdp      { min-width: 50px; }     /* СДП */
+.zak-table .zak-th-months,   .zak-table .zak-td-months   { min-width: 50px; }     /* Месяцы запаса */
 .zak-table .zak-th-stock,    .zak-table .zak-td-stock    { min-width: 100px; }    /* Остатки */
 .zak-table .zak-th-date,     .zak-table .zak-td-date     { min-width: 140px; }    /* Дата актуальности (поле целиком) */
-.zak-table .zak-th-tz,       .zak-table .zak-td-tz       { min-width: 100px; }    /* ТЗ */
-.zak-table .zak-th-incoming, .zak-table .zak-td-incoming { min-width: 100px; }    /* В пути */
+.zak-table .zak-th-tz,       .zak-table .zak-td-tz       { min-width: 50px; }    /* ТЗ */
+.zak-table .zak-th-incoming, .zak-table .zak-td-incoming { min-width: 50px; }    /* В пути */
 .zak-table .zak-th-neardate, .zak-table .zak-td-neardate { min-width: 125px; }    /* Ближайшие даты */
 .zak-table .zak-th-forecast, .zak-table .zak-td-forecast { min-width: 130px; }    /* Прогнозы */
 .zak-table .zak-th-plan,     .zak-table .zak-td-plan     { min-width: 110px; }    /* Планируемый заказ */
