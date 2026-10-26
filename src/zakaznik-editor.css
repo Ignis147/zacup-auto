@@ -1,0 +1,419 @@
+/* ============================================================
+   Визуальное оформление раздела «Заказник» (главная товарная матрица).
+   Только внешний вид: логика, расчёты, обработчики и структура данных не затрагиваются.
+   Палитра Modern Enterprise: #F5F7FA / #FFFFFF / #1F2937 / #64748B
+   #2563EB / #1E293B / #E2E8F0 / #F8FAFC / #EFF6FF
+   Все классы имеют префикс zak- и действуют только внутри .zak-page,
+   поэтому другие разделы приложения (Бренды, Поставки, История продаж,
+   Настройки) стилями не затронуты.
+   ============================================================ */
+
+/* ---------- Фон страницы ---------- */
+.zak-page { background: #F5F7FA; padding: 10px 12px; }
+
+/* ---------- Верхняя рабочая панель ---------- */
+.zak-toolbar.card {
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  background: #FFFFFF;
+  padding: 10px 14px;
+  margin-bottom: 10px;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+}
+.zak-toolbar-row { gap: 10px 12px; }
+/* «Группы колонок» и чипы-переключатели держатся вместе при переносе строки */
+.zak-group-label { white-space: nowrap; flex: none; }
+.zak-chip { flex: none; }
+.zak-toolbar-row + .zak-toolbar-row { margin-top: 10px; padding-top: 10px; border-top: 1px solid #F1F5F9; }
+
+/* Единая высота полей и кнопок на панели */
+.zak-toolbar .field { margin: 0; min-width: 0; }
+.zak-toolbar .field label {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  color: #64748B;
+}
+.zak-toolbar .field input,
+.zak-toolbar .field select,
+.zak-toolbar .btn {
+  height: 32px;
+  border-radius: 6px;
+  font-size: 13px;
+}
+.zak-toolbar .field input,
+.zak-toolbar .field select {
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #1F2937;
+  padding: 4px 10px;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.zak-toolbar .field input:hover,
+.zak-toolbar .field select:hover { border-color: #cbd5e1; }
+.zak-toolbar .field input:focus,
+.zak-toolbar .field select:focus {
+  outline: none;
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+.zak-search { flex: 1 1 240px; max-width: 420px; }
+.zak-sort { width: 168px; }
+.zak-order-date { width: 210px; }
+.zak-order-date input[type="date"] { font-variant-numeric: tabular-nums; }
+
+/* Чекбоксы-переключатели групп колонок */
+.zak-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #1F2937;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+.zak-check input[type="checkbox"] { accent-color: #2563EB; margin: 0; }
+.zak-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid #E2E8F0;
+  border-radius: 999px;
+  background: #F8FAFC;
+  color: #1F2937;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+  transition: all .12s ease;
+}
+.zak-chip:hover { border-color: #bfdbfe; background: #EFF6FF; }
+.zak-chip input[type="checkbox"] { accent-color: #2563EB; margin: 0; }
+.zak-group-label { color: #64748B; font-size: 11px; text-transform: uppercase; letter-spacing: .4px; font-weight: 600; }
+.zak-divider {
+  flex: none !important;
+  width: 1px;
+  height: 22px;
+  background: #E2E8F0;
+  margin: 0 2px;
+}
+
+/* Кнопки панели: акцент/нейтральные в едином стиле */
+.zak-toolbar .btn {
+  padding: 0 14px;
+  font-weight: 600;
+  border: 1px solid #E2E8F0;
+  background: #FFFFFF;
+  color: #1F2937;
+  transition: all .12s ease;
+  white-space: nowrap;
+}
+.zak-toolbar .btn:hover { background: #F8FAFC; border-color: #cbd5e1; }
+.zak-toolbar .btn.primary { background: #2563EB; border-color: #2563EB; color: #FFFFFF; }
+.zak-toolbar .btn.primary:hover { background: #1D4ED8; border-color: #1D4ED8; }
+.zak-toolbar .btn.small { height: 24px; padding: 0 8px; font-size: 12px; }
+
+/* Информационные сообщения панели */
+.zak-hint { line-height: 1.45; }
+.zak-msg { margin-top: 8px; }
+.zak-toolbar .err.zak-msg,
+.zak-toolbar .ok-soft.zak-msg {
+  padding: 7px 10px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  line-height: 1.45;
+}
+.zak-toolbar .ok-soft.zak-msg {
+  color: #166534;
+  background: #F0FDF4;
+  border-color: #BBF7D0;
+}
+.zak-toolbar .err.zak-msg {
+  color: #991B1B;
+  background: #FEF2F2;
+  border-color: #FECACA;
+}
+
+/* ---------- Область прокрутки таблицы ---------- */
+.tbl-scroll.zak-scroll {
+  border: 1px solid #E2E8F0;
+  border-radius: 10px;
+  background: #FFFFFF;
+  /* внутренняя горизонтальная + вертикальная прокрутка;
+     панель инструментов находится вне этой области */
+  max-height: calc(100vh - 208px);
+  overflow: auto;
+  scrollbar-color: #cbd5e1 #F8FAFC;
+}
+
+/* ---------- Таблица: отказ от «Excel-сетки» ---------- */
+table.grid.zak-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  width: 100%;
+  min-width: 1560px;      /* колонки не сжимаются до нечитаемого — при нехватке ширины работает горизонтальный скролл */
+  background: #FFFFFF;
+  color: #1F2937;
+  font-size: 12.5px;
+}
+table.grid.zak-table th,
+table.grid.zak-table td { border: none; }
+
+/* --- Закреплённая шапка (оба уровня) --- */
+.zak-table thead th {
+  position: sticky;
+  z-index: 2;
+  background: #F8FAFC;
+  color: #1F2937;
+  font-weight: 700;
+  text-align: left;
+  vertical-align: middle;
+  white-space: nowrap;
+  padding: 6px 10px;
+  border-bottom: 1px solid #E2E8F0;
+}
+.zak-table thead tr.zak-group-row th {
+  top: 0;
+  z-index: 4;
+  height: 28px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: .5px;
+  text-align: center;
+  border-bottom: 1px solid #E2E8F0;
+}
+.zak-table thead tr.zak-head-row th {
+  top: 28px;                       /* смещение = высота группы заголовков */
+  z-index: 3;
+  height: 30px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+  color: #64748B;
+  border-right: 1px solid #EEF2F6; /* тонкое разделение колонок в шапке */
+  border-bottom: 1px solid #E2E8F0;
+}
+.zak-table thead th.num { text-align: right; }
+
+/* --- Оттенки групп колонок в шапке (очень светлые, функциональные) --- */
+.zak-table thead tr.zak-group-row th.colgroup.zak-gn { background: #F8FAFC; }        /* номенклатура — нейтральный */
+.zak-table thead tr.zak-group-row th.colgroup.zak-gp { background: #EFF6FF; color: #1E3A8A; } /* закупочные цены — светло-голубой */
+.zak-table thead tr.zak-group-row th.colgroup.zak-gs { background: #F5F3FF; color: #4C1D95; } /* продажи — светло-фиолетовый */
+.zak-table thead tr.zak-group-row th.colgroup.zak-gt { background: #F8FAFC; }        /* остатки — нейтральный */
+.zak-table thead tr.zak-group-row th.colgroup.zak-gt2 { background: #ECFDF5; color: #065F46; } /* в пути/прогнозы — светло-бирюзовый */
+.zak-table thead tr.zak-group-row th.colgroup.zak-go { background: #EFF4FF; color: #1E40AF; }  /* планирование заказа — светло-синий */
+
+/* тонкая вертикальная граница между группами */
+.zak-table thead tr.zak-group-row th + th.colgroup { border-left: 1px solid #E2E8F0; }
+
+/* --- Строки: тонкие горизонтальные разделители, подсветка, зебра --- */
+.zak-table tbody td {
+  padding: 4px 10px;
+  height: 32px;                    /* компактная высота строки (32–36px) */
+  vertical-align: middle;
+  background: #FFFFFF;
+  border-bottom: 1px solid #E2E8F0;
+  line-height: 1.35;
+}
+.zak-table tbody tr:nth-child(even) td { background: #FBFDFF; }
+.zak-table tbody tr:last-child td { border-bottom: none; }
+.zak-table tbody tr:hover td { background: #EFF6FF; }
+.zak-table tbody tr.zak-archived td { opacity: .55; }
+
+/* Числовые значения — вправо, табличные цифры; текстовые — влево */
+.zak-table td.num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- Ширины первых колонок (ориентир для закреплённых колонок) --- */
+.zak-f1 { width: 132px; }
+.zak-f2 { width: 84px; }
+.zak-f3 { width: 320px; }
+.zak-f4 { width: 62px; }
+
+/* --- Колонка наименования: широкая, перенос без потери доступности --- */
+.zak-table th.zak-th-name { width: 320px; min-width: 280px; max-width: 360px; }
+.zak-table td.zak-name {
+  width: 320px;
+  min-width: 280px;
+  max-width: 360px;
+  white-space: normal;
+  overflow-wrap: break-word;
+  word-break: normal;
+}
+.zak-table td.zak-art {
+  white-space: nowrap;
+  color: #64748B;
+  font-variant-numeric: tabular-nums;
+}
+.zak-table th.zak-th-pack { text-align: right; }
+
+/* Ссылки наименований: тёмный текст, синий акцент при наведении */
+.zak-table td.zak-name a {
+  color: #1F2937;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.zak-table td.zak-name a:hover { color: #2563EB; text-decoration: underline; text-underline-offset: 2px; }
+.zak-table td.zak-name a:focus-visible { outline: 2px solid rgba(37, 99, 235, .45); outline-offset: 1px; border-radius: 3px; }
+
+/* ---------- Закрепление первых четырёх служебных колонок ----------
+   Штрихкод, Артикул, Наименование закреплены безусловно.
+   «Кратность» закреплена вместе с ними, чтобы фиксированная зона
+   всегда заканчивалась ровной границей у края закреплённой области
+   (иначе при отключённых группах за «Наименованием» плыли бы разные колонки).
+   Реализация — только CSS: colSpan первого закреплённого <td> в tfoot
+   совпадает с числом закреплённых колонок, поэтому итоговая ячейка
+   корректно лежит внутри закреплённой зоны. */
+.zak-table .zak-sticky-col {
+  position: sticky;
+  z-index: 1;
+  background: inherit;             /* наследует фон td (белый/зебра) */
+}
+.zak-table td.zak-sticky-col { background-color: #FFFFFF; }
+.zak-table tbody tr:nth-child(even) td.zak-sticky-col { background-color: #FBFDFF; }
+.zak-table tbody tr:hover td.zak-sticky-col { background-color: #EFF6FF; }
+.zak-table thead th.zak-sticky-col { background-color: #F8FAFC; }
+
+.zak-table .zak-f1 { left: 0; }
+.zak-table .zak-f2 { left: 132px; }
+.zak-table .zak-f3 { left: 216px; }
+.zak-table .zak-f4 { left: 536px; }
+
+/* Тень/разделитель справа от закреплённой зоны */
+.zak-table .zak-f4::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -8px;
+  left: 100%;
+  width: 8px;
+  pointer-events: none;
+  box-shadow: inset 6px 0 6px -6px rgba(15, 23, 42, 0.18);
+}
+/* z-index пересечений: фикс. колонки < фикс. шапка < их пересечение */
+.zak-table thead th.zak-sticky-col { z-index: 5; }
+
+/* ---------- Поля редактирования в таблице ---------- */
+.zak-table .cell-input {
+  width: 100%;
+  height: 26px;
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  background: #FFFFFF;
+  padding: 1px 6px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  color: #1F2937;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.zak-table .cell-input:hover { border-color: #cbd5e1; }
+.zak-table .cell-input:focus {
+  outline: none;
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #FFFFFF;
+}
+.zak-table .cell-input:disabled { background: #F8FAFC; color: #94A3B8; cursor: default; }
+
+/* Дата актуальности остатка — компактно, без видимой рамки до фокуса */
+.zak-table input[type="date"] {
+  width: 100%;
+  height: 26px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: #1F2937;
+  padding: 1px 4px;
+  transition: border-color .12s ease, box-shadow .12s ease;
+}
+.zak-table input[type="date"]:hover { border-color: #E2E8F0; }
+.zak-table input[type="date"]:focus {
+  outline: none;
+  border-color: #2563EB;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+  background: #FFFFFF;
+}
+
+/* Маленькая кнопка редактирования цены в ячейке */
+.zak-table .btn.small {
+  height: 22px;
+  padding: 0 7px;
+  font-size: 12px;
+  line-height: 1;
+  color: #64748B;
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 5px;
+  transition: all .12s ease;
+}
+.zak-table .btn.small:hover { color: #2563EB; border-color: #2563EB; background: #EFF6FF; }
+
+/* ---------- Цветовая индикация запасов (те же правила, спокойные оттенки) ---------- */
+.zak-table .warn-cell { background: #FEE2E2 !important; color: #991B1B; }        /* дефицит */
+.zak-table .warn-ok { background: #DCFCE7 !important; color: #166534; }          /* норма */
+.zak-table .warn-orange { background: #FEF3C7 !important; color: #92400E; }      /* избыток */
+.zak-table .warn-nodata { background: #DBEAFE; color: #1D4ED8; border-radius: 4px; padding: 1px 6px; } /* инфо */
+.zak-table .overdue { color: #DC2626; font-weight: 600; font-size: 11px; }
+.zak-table tbody tr:hover td.warn-cell { background: #FECACA !important; }
+.zak-table tbody tr:hover td.warn-ok { background: #BBF7D0 !important; }
+.zak-table tbody tr:hover td.warn-orange { background: #FDE68A !important; }
+
+/* ---------- Итоговая строка (закреплена снизу области прокрутки) ---------- */
+.zak-table tfoot td {
+  position: sticky;
+  bottom: 0;
+  z-index: 1;
+  background: #F8FAFC;
+  border-top: 2px solid #E2E8F0;
+  border-bottom: none;
+  padding: 7px 10px;
+  height: 34px;
+  font-weight: 700;
+  color: #1E293B;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.zak-table tfoot td.num { text-align: right; }
+.zak-table tfoot .small { font-weight: 600; }
+.zak-table tfoot td.zak-totals-label {
+  letter-spacing: .6px;
+  text-transform: uppercase;
+  color: #64748B;
+  font-size: 11px;
+}
+/* итоговая ячейка лежит внутри закреплённой зоны (colSpan=16 ≥ 4 закреплённых колонок) */
+.zak-table tfoot tr.zak-total-row td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 6;
+  background: #F8FAFC;
+  box-shadow: 6px 0 6px -6px rgba(15, 23, 42, 0.18);
+}
+
+/* пустая строка «нет товаров» */
+.zak-table tbody td.muted { text-align: center; color: #64748B; padding: 18px 10px; background: #FFFFFF; }
+
+/* ---------- Нижняя заметка под таблицей ---------- */
+.zak-footer-note {
+  margin-top: 8px !important;
+  padding: 0 2px;
+  color: #64748B;
+  line-height: 1.5;
+}
+
+/* ---------- Адаптивность панели под ноутбуки ---------- */
+@media (max-width: 1400px) {
+  .zak-sort { width: 150px; }
+  .zak-order-date { width: 190px; }
+  .zak-group-label { display: none; }
+}
