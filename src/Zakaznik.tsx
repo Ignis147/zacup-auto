@@ -306,14 +306,14 @@ export function ZakaznikPage({
   const colSpan = 4 + (groups.price ? 3 : 0) + (groups.sales ? 4 : 0) + (groups.stock ? 5 : 0) + (groups.supply ? 6 : 0) + (groups.order ? 9 : 0);
 
   return (
-    <div className="page">
-      <div className="card">
-        <div className="row">
+    <div className="page zak-page">
+      <div className="card zak-toolbar">
+        <div className="row zak-toolbar-row">
           <button className="btn primary" onClick={() => setAddOpen(true)}>＋ Товар</button>
-          <div className="field grow" style={{ marginBottom: 0 }}>
+          <div className="field grow zak-search">
             <input placeholder="Поиск: название / штрихкод / артикул" value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <div className="field" style={{ marginBottom: 0 }}>
+          <div className="field zak-sort">
             <label>Сортировка</label>
             <select value={sortKey} onChange={(e) => setSortKey(e.target.value as any)}>
               <option value="name">По названию</option>
@@ -322,52 +322,53 @@ export function ZakaznikPage({
               <option value="tzMsk">ТЗ МСК ↓</option>
             </select>
           </div>
-          <label className="small"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> архив</label>
-          <span className="grow" />
+          <label className="small zak-check"><input type="checkbox" checked={showArchived} onChange={(e) => setShowArchived(e.target.checked)} /> архив</label>
+          <span className="zak-divider" aria-hidden="true" />
+          <span className="zak-group-label">Группы колонок:</span>
           {(Object.keys(groups) as (keyof typeof groups)[]).map((g) => (
-            <label key={g} className="small">
+            <label key={g} className="small zak-chip">
               <input type="checkbox" checked={groups[g]} onChange={(e) => setGroups({ ...groups, [g]: e.target.checked })} />{' '}
               {{ price: 'Цены', sales: 'Продажи', stock: 'Остатки', supply: 'Поставки', order: 'Заказ' }[g]}
             </label>
           ))}
         </div>
-        <div className="row" style={{ marginTop: 8 }}>
-          <div className="field" style={{ marginBottom: 0 }}>
+        <div className="row zak-toolbar-row">
+          <div className="field zak-order-date">
             <label>Дата оформления нового заказа</label>
             <input type="date" value={orderDate} onChange={(e) => setOrderDate(e.target.value)} />
           </div>
-          <span className="small muted">Прибытие: ВЛД {fmtDate(newVldDate)} ({lg.orderPrep + lg.shipVld} дн.) · МСК {fmtDate(newMskDate)} ({lg.orderPrep + lg.shipVld + lg.extraMsk} дн.). Норма ТЗ: {minM}–{maxM} мес., цель {targetM} мес.</span>
+          <span className="small muted zak-hint">Прибытие: ВЛД {fmtDate(newVldDate)} ({lg.orderPrep + lg.shipVld} дн.) · МСК {fmtDate(newMskDate)} ({lg.orderPrep + lg.shipVld + lg.extraMsk} дн.). Норма ТЗ: {minM}–{maxM} мес., цель {targetM} мес.</span>
           <span className="grow" />
-          <label className="small tooltip">
+          <label className="small tooltip zak-check">
             <input type="checkbox" checked={receiptsIncluded} onChange={(e) => setReceiptsIncluded(e.target.checked)} /> полученные поставки уже учтены в остатках
             <span className="tip">Снимите flag, если обновили остатки ДО включения в них прибывших поставок — иначе грозит двойной учёт.</span>
           </label>
           <button className="btn" onClick={applyAllRecommendations} title="Заполнить план рекомендованными количествами">Применить рекомендации</button>
           <button className="btn primary" onClick={fixOrder}>📌 Зафиксировать заказ</button>
         </div>
-        {msg && <div className="small ok-soft" style={{ marginTop: 6 }}>{msg} <button className="btn small" onClick={() => setMsg(null)}>×</button></div>}
-        {hasPackErrors && <div className="err small" style={{ marginTop: 4 }}>⚠ Есть нарушения кратности (красные ячейки). quantities не будут исправлены автоматически — исправьте вручную.</div>}
-        {hasPricesMissing && <div className="err small" style={{ marginTop: 4 }}>⚠ У товаров с ненулевым заказом отсутствует цена — фиксация невозможна до заполнения.</div>}
+        {msg && <div className="small ok-soft zak-msg">{msg} <button className="btn small" onClick={() => setMsg(null)}>×</button></div>}
+        {hasPackErrors && <div className="err small zak-msg">⚠ Есть нарушения кратности (красные ячейки). quantities не будут исправлены автоматически — исправьте вручную.</div>}
+        {hasPricesMissing && <div className="err small zak-msg">⚠ У товаров с ненулевым заказом отсутствует цена — фиксация невозможна до заполнения.</div>}
       </div>
 
-      <div className="tbl-scroll" onPaste={handlePasteStocks}>
-        <table className="grid">
+      <div className="tbl-scroll zak-scroll" onPaste={handlePasteStocks}>
+        <table className="grid zak-table">
           <thead>
-            <tr>
-              <th colSpan={4} className="colgroup">Номенклатура</th>
-              {groups.price && <th colSpan={3} className="colgroup">Закупочная цена</th>}
-              {groups.sales && <th colSpan={4} className="colgroup">Продажи и СДП</th>}
-              {groups.stock && <th colSpan={5} className="colgroup">Остатки и ТЗ</th>}
-              {groups.supply && <th colSpan={6} className="colgroup">Поставки в пути</th>}
-              {groups.order && <th colSpan={9} className="colgroup">Планируемый заказ</th>}
+            <tr className="zak-group-row">
+              <th colSpan={4} className="colgroup zak-gn zak-f1">Номенклатура</th>
+              {groups.price && <th colSpan={3} className="colgroup zak-gp zak-f4">Закупочная цена</th>}
+              {groups.sales && <th colSpan={4} className="colgroup zak-gs">Продажи и СДП</th>}
+              {groups.stock && <th colSpan={5} className="colgroup zak-gt">Остатки и ТЗ</th>}
+              {groups.supply && <th colSpan={6} className="colgroup zak-gt2">Поставки в пути</th>}
+              {groups.order && <th colSpan={9} className="colgroup zak-go">Планируемый заказ</th>}
             </tr>
-            <tr>
-              <th>Штрихкод</th><th>Артикул</th><th>Наименование</th><th>Кратность</th>
-              {groups.price && <><th>Тип</th><th>Цена/ступени</th><th>Примен. цена</th></>}
-              {groups.sales && <><th>СДП ВЛД</th><th>мес. ВЛД</th><th>СДП МСК</th><th>мес. МСК</th></>}
-              {groups.stock && <><th>Ост. ВЛД</th><th>Ост. МСК</th><th>Дата</th><th>ТЗ ВЛД</th><th>ТЗ МСК</th></>}
-              {groups.supply && <><th>В пути ВЛД</th><th>Ближ. ВЛД</th><th>В пути МСК</th><th>Ближ. МСК</th><th>Прогноз ВЛД к дате заказа</th><th>Прогноз МСК к дате заказа</th></>}
-              {groups.order && <><th>Заказ ВЛД</th><th>Корп. ВЛД</th><th>Сумма ВЛД</th><th>Заказ МСК</th><th>Корп. МСК</th><th>Сумма МСК</th><th>Всего</th><th>ТЗ после ВЛД / МСК</th><th>Рекоменд.</th></>}
+            <tr className="zak-head-row">
+              <th className="zak-f1 zak-sticky-col">Штрихкод</th><th className="zak-f2 zak-sticky-col">Артикул</th><th className="zak-f3 zak-sticky-col zak-th-name">Наименование</th><th className="zak-f4 zak-sticky-col zak-th-pack">Кратность</th>
+              {groups.price && <><th>Тип</th><th>Цена/ступени</th><th className="num">Примен. цена</th></>}
+              {groups.sales && <><th className="num">СДП ВЛД</th><th className="num">мес. ВЛД</th><th className="num">СДП МСК</th><th className="num">мес. МСК</th></>}
+              {groups.stock && <><th className="num">Ост. ВЛД</th><th className="num">Ост. МСК</th><th>Дата</th><th className="num">ТЗ ВЛД</th><th className="num">ТЗ МСК</th></>}
+              {groups.supply && <><th className="num">В пути ВЛД</th><th>Ближ. ВЛД</th><th className="num">В пути МСК</th><th>Ближ. МСК</th><th className="num">Прогноз ВЛД к дате заказа</th><th className="num">Прогноз МСК к дате заказа</th></>}
+              {groups.order && <><th className="num">Заказ ВЛД</th><th className="num">Корп. ВЛД</th><th className="num">Сумма ВЛД</th><th className="num">Заказ МСК</th><th className="num">Корп. МСК</th><th className="num">Сумма МСК</th><th className="num">Всего</th><th className="num">ТЗ после ВЛД / МСК</th><th className="num">Рекоменд.</th></>}
             </tr>
           </thead>
           <tbody>
@@ -385,15 +386,15 @@ export function ZakaznikPage({
                 ? `${fmtNum(p.fixedPrice ?? null)} ${brand.currency}/шт`
                 : (p.tiers ?? []).map((t) => `от ${t.minBoxes}кор → ${fmtNum(t.price)}`).join(' · ') || '—';
               return (
-                <tr key={p.id} style={p.archived ? { opacity: 0.55 } : undefined}>
-                  <td className="sticky-col">{p.barcode}</td>
-                  <td>{p.article}</td>
-                  <td>
+                <tr key={p.id} className={p.archived ? 'zak-archived' : undefined}>
+                  <td className="sticky-col zak-sticky-col zak-f1">{p.barcode}</td>
+                  <td className="zak-sticky-col zak-f2 zak-art">{p.article}</td>
+                  <td className="zak-sticky-col zak-f3 zak-name">
                     <a href="#" onClick={(e) => { e.preventDefault(); onOpenProduct(p.id!); }} title="Открыть карточку: продажи по месяцам, история цен, участие в поставках">
                       {p.name}{p.archived && <span className="badge archived"> архив</span>}
                     </a>
                   </td>
-                  <td className="num" style={{ width: 60 }}><NumCell value={p.packSize} onCommit={(v) => patchProduct(p.id!, { packSize: v ?? 1 })} min={1} /></td>
+                  <td className="num zak-f4" style={{ width: 60 }}><NumCell value={p.packSize} onCommit={(v) => patchProduct(p.id!, { packSize: v ?? 1 })} min={1} /></td>
 
                   {groups.price && <>
                     <td className="small">{p.priceKind === 'fixed' ? 'Фикс.' : 'Ступенч.'}
@@ -461,8 +462,8 @@ export function ZakaznikPage({
             {filteredRows.length === 0 && <tr><td colSpan={colSpan} className="muted">Нет товаров. Добавьте номенклатуру кнопкой «＋ Товар».</td></tr>}
           </tbody>
           <tfoot>
-            <tr>
-              <td colSpan={4 + (groups.price ? 3 : 0) + (groups.sales ? 4 : 0) + (groups.stock ? 5 : 0)} className="num"><b>ИТОГО</b></td>
+            <tr className="zak-total-row">
+              <td colSpan={4 + (groups.price ? 3 : 0) + (groups.sales ? 4 : 0) + (groups.stock ? 5 : 0)} className="num zak-totals-label"><b>ИТОГО</b></td>
               {groups.supply && <>
                 <td className="num"><b>{fmtNum(incomingTotals.vld)}</b></td>
                 <td className="num"></td>
@@ -486,7 +487,7 @@ export function ZakaznikPage({
           </tfoot>
         </table>
       </div>
-      <div className="small muted" style={{ marginTop: 6 }}>
+      <div className="small muted zak-footer-note" style={{ marginTop: 6 }}>
         Курсы: 1 USD = {settings.usdRub} ₽, 1 KRW = {settings.krwRub} ₽ (обновлены {fmtDate(settings.ratesUpdatedAt)}).
         Клик по названию товара открывает карточку: продажи по месяцам обоих филиалов, история цен, участие в поставках.
         Ctrl+V в таблице — массовая вставка остатков: колонки «штрихкод · ВЛД · МСК».
