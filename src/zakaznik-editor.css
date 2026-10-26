@@ -298,7 +298,7 @@ table.grid.zak-table td { border: none; }
 .zak-table .zak-th-date,     .zak-table .zak-td-date     { min-width: 140px; }    /* Дата актуальности (поле целиком) */
 .zak-table .zak-th-tz,       .zak-table .zak-td-tz       { min-width: 50px; }    /* ТЗ */
 .zak-table .zak-th-incoming, .zak-table .zak-td-incoming { min-width: 50px; }    /* В пути */
-.zak-table .zak-th-neardate, .zak-table .zak-td-neardate { min-width: 125px; }    /* Ближайшие даты */
+.zak-table .zak-th-neardate, .zak-table .zak-td-neardate { min-width: 50px; }    /* Ближайшие даты */
 .zak-table .zak-th-forecast, .zak-table .zak-td-forecast { min-width: 130px; }    /* Прогнозы */
 .zak-table .zak-th-plan,     .zak-table .zak-td-plan     { min-width: 110px; }    /* Планируемый заказ */
 .zak-table .zak-th-boxes,    .zak-table .zak-td-boxes    { min-width: 90px; }
