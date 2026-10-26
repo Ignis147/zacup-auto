@@ -309,7 +309,7 @@ table.grid.zak-table td { border: none; }
 
 /* Поля ввода внутри ячеек не должны сжиматься до нескольких пикселей:
    min-width учитывается алгоритмом автоширины колонок. */
-.zak-table td .cell-input { min-width: 42px; }
+.zak-table td .cell-input { width: 62px; }
 .zak-table td.zak-td-date input[type="date"] { min-width: 128px; }
 
 .zak-table td.zak-name {
