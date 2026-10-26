@@ -353,32 +353,28 @@ export function ZakaznikPage({
 
       <div className="tbl-scroll zak-scroll" onPaste={handlePasteStocks}>
         <table className="grid zak-table">
-          {/* Декоративная разметка (исправление п.1): жёсткие ширины первых
-              четырёх колонок — colgroup приоритетнее содержимого ячеек,
-              поэтому sticky-смещения left всегда точны и колонки не
-              наезжают друг на друга. Порядок колонок не менялся. */}
-          <colgroup>
-            <col style={{ width: 132 }} />
-            <col style={{ width: 84 }} />
-            <col style={{ width: 320 }} />
-            <col style={{ width: 64 }} />
-          </colgroup>
+          {/* Исправление сжатия колонок: colgroup с жёсткими ширинами убран —
+              он был нужен только для точных left-смещений sticky-колонок.
+              Таблица больше не закрепляет колонки и не пытается уместиться в
+              ширину экрана: естественная ширина (max-content) + минимальные
+              ширины колонок из zakaznik-editor.css + одна горизонтальная
+              прокрутка контейнера .zak-scroll. Порядок колонок не менялся. */}
           <thead>
             <tr className="zak-group-row">
-              <th colSpan={4} className="colgroup zak-gn zak-f1">Номенклатура</th>
-              {groups.price && <th colSpan={3} className="colgroup zak-gp zak-f4">Закупочная цена</th>}
+              <th colSpan={4} className="colgroup zak-gn">Номенклатура</th>
+              {groups.price && <th colSpan={3} className="colgroup zak-gp">Закупочная цена</th>}
               {groups.sales && <th colSpan={4} className="colgroup zak-gs">Продажи и СДП</th>}
               {groups.stock && <th colSpan={5} className="colgroup zak-gt">Остатки и ТЗ</th>}
               {groups.supply && <th colSpan={6} className="colgroup zak-gt2">Поставки в пути</th>}
               {groups.order && <th colSpan={9} className="colgroup zak-go">Планируемый заказ</th>}
             </tr>
             <tr className="zak-head-row">
-              <th className="zak-f1 zak-sticky-col">Штрихкод</th><th className="zak-f2 zak-sticky-col">Артикул</th><th className="zak-f3 zak-sticky-col zak-th-name">Наименование</th><th className="zak-f4 zak-sticky-col zak-th-pack">Кратность</th>
-              {groups.price && <><th>Тип</th><th>Цена/ступени</th><th className="num">Примен. цена</th></>}
-              {groups.sales && <><th className="num">СДП ВЛД</th><th className="num">мес. ВЛД</th><th className="num">СДП МСК</th><th className="num">мес. МСК</th></>}
-              {groups.stock && <><th className="num">Ост. ВЛД</th><th className="num">Ост. МСК</th><th>Дата</th><th className="num">ТЗ ВЛД</th><th className="num">ТЗ МСК</th></>}
-              {groups.supply && <><th className="num">В пути ВЛД</th><th>Ближ. ВЛД</th><th className="num">В пути МСК</th><th>Ближ. МСК</th><th className="num">Прогноз ВЛД к дате заказа</th><th className="num">Прогноз МСК к дате заказа</th></>}
-              {groups.order && <><th className="num">Заказ ВЛД</th><th className="num">Корп. ВЛД</th><th className="num">Сумма ВЛД</th><th className="num">Заказ МСК</th><th className="num">Корп. МСК</th><th className="num">Сумма МСК</th><th className="num">Всего</th><th className="num">ТЗ после ВЛД / МСК</th><th className="num">Рекоменд.</th></>}
+              <th className="zak-th-barcode">Штрихкод</th><th className="zak-th-art">Артикул</th><th className="zak-th-name">Наименование</th><th className="zak-th-pack">Кратность</th>
+              {groups.price && <><th className="zak-th-pricekind">Тип</th><th className="zak-th-pricetiers">Цена/ступени</th><th className="num zak-th-applied">Примен. цена</th></>}
+              {groups.sales && <><th className="num zak-th-sdp">СДП ВЛД</th><th className="num zak-th-months">мес. ВЛД</th><th className="num zak-th-sdp">СДП МСК</th><th className="num zak-th-months">мес. МСК</th></>}
+              {groups.stock && <><th className="num zak-th-stock">Ост. ВЛД</th><th className="num zak-th-stock">Ост. МСК</th><th className="zak-th-date">Дата</th><th className="num zak-th-tz">ТЗ ВЛД</th><th className="num zak-th-tz">ТЗ МСК</th></>}
+              {groups.supply && <><th className="num zak-th-incoming">В пути ВЛД</th><th className="zak-th-neardate">Ближ. ВЛД</th><th className="num zak-th-incoming">В пути МСК</th><th className="zak-th-neardate">Ближ. МСК</th><th className="num zak-th-forecast">Прогноз ВЛД к дате заказа</th><th className="num zak-th-forecast">Прогноз МСК к дате заказа</th></>}
+              {groups.order && <><th className="num zak-th-plan">Заказ ВЛД</th><th className="num zak-th-boxes">Корп. ВЛД</th><th className="num zak-th-sum">Сумма ВЛД</th><th className="num zak-th-plan">Заказ МСК</th><th className="num zak-th-boxes">Корп. МСК</th><th className="num zak-th-sum">Сумма МСК</th><th className="num zak-th-totalqty">Всего</th><th className="num zak-th-aftertz">ТЗ после ВЛД / МСК</th><th className="num zak-th-rec">Рекоменд.</th></>}
             </tr>
           </thead>
           <tbody>
@@ -397,74 +393,74 @@ export function ZakaznikPage({
                 : (p.tiers ?? []).map((t) => `от ${t.minBoxes}кор → ${fmtNum(t.price)}`).join(' · ') || '—';
               return (
                 <tr key={p.id} className={p.archived ? 'zak-archived' : undefined}>
-                  <td className="sticky-col zak-sticky-col zak-f1">{p.barcode}</td>
-                  <td className="zak-sticky-col zak-f2 zak-art">{p.article}</td>
-                  <td className="zak-sticky-col zak-f3 zak-name">
+                  <td className="zak-td-barcode">{p.barcode}</td>
+                  <td className="zak-td-art zak-art">{p.article}</td>
+                  <td className="zak-td-name zak-name">
                     <a href="#" onClick={(e) => { e.preventDefault(); onOpenProduct(p.id!); }} title="Открыть карточку: продажи по месяцам, история цен, участие в поставках">
                       {p.name}{p.archived && <span className="badge archived"> архив</span>}
                     </a>
                   </td>
-                  <td className="num zak-f4" style={{ width: 60 }}><NumCell value={p.packSize} onCommit={(v) => patchProduct(p.id!, { packSize: v ?? 1 })} min={1} /></td>
+                  <td className="num zak-td-pack"><NumCell value={p.packSize} onCommit={(v) => patchProduct(p.id!, { packSize: v ?? 1 })} min={1} /></td>
 
                   {groups.price && <>
-                    <td className="small">{p.priceKind === 'fixed' ? 'Фикс.' : 'Ступенч.'}
+                    <td className="small zak-td-pricekind">{p.priceKind === 'fixed' ? 'Фикс.' : 'Ступенч.'}
                       <button className="btn small" style={{ marginLeft: 4 }} onClick={() => onOpenProduct(p.id!)} title="Настроить тип и ступени цены">✎</button>
                     </td>
-                    <td className="small" title={priceLabel}>{priceLabel.length > 30 ? priceLabel.slice(0, 28) + '…' : priceLabel}</td>
-                    <td className="num">{c && c.totalQty > 0 ? `${fmtNum(c.appliedPrice)} ${brand.currency}` : (p.priceKind === 'fixed' ? `${fmtNum(p.fixedPrice ?? null)}` : '—')}</td>
+                    <td className="small zak-td-pricetiers" title={priceLabel}>{priceLabel.length > 30 ? priceLabel.slice(0, 28) + '…' : priceLabel}</td>
+                    <td className="num zak-td-applied">{c && c.totalQty > 0 ? `${fmtNum(c.appliedPrice)} ${brand.currency}` : (p.priceKind === 'fixed' ? `${fmtNum(p.fixedPrice ?? null)}` : '—')}</td>
                   </>}
 
                   {groups.sales && <>
-                    <td className="num">{r.sdpVld.kind === 'value' ? fmtNum(r.sdpVld.sdp, 2) : <span className="warn-nodata">Нет данных</span>}</td>
-                    <td className="num small">{r.sdpVld.kind === 'value' ? r.sdpVld.monthsUsed : '—'}</td>
-                    <td className="num">{r.sdpMsk.kind === 'value' ? fmtNum(r.sdpMsk.sdp, 2) : <span className="warn-nodata">Нет данных</span>}</td>
-                    <td className="num small">{r.sdpMsk.kind === 'value' ? r.sdpMsk.monthsUsed : '—'}</td>
+                    <td className="num zak-td-sdp">{r.sdpVld.kind === 'value' ? fmtNum(r.sdpVld.sdp, 2) : <span className="nodata-text">Нет данных</span>}</td>
+                    <td className="num small zak-td-months">{r.sdpVld.kind === 'value' ? r.sdpVld.monthsUsed : '—'}</td>
+                    <td className="num zak-td-sdp">{r.sdpMsk.kind === 'value' ? fmtNum(r.sdpMsk.sdp, 2) : <span className="nodata-text">Нет данных</span>}</td>
+                    <td className="num small zak-td-months">{r.sdpMsk.kind === 'value' ? r.sdpMsk.monthsUsed : '—'}</td>
                   </>}
 
                   {groups.stock && <>
-                    <td className="num" style={{ width: 70 }}><NumCell value={r.stock?.vld ?? null} onCommit={(v) => setStock(p.id!, 'vld', v)} min={0} placeholder="—" /></td>
-                    <td className="num" style={{ width: 70 }}><NumCell value={r.stock?.msk ?? null} onCommit={(v) => setStock(p.id!, 'msk', v)} min={0} placeholder="—" /></td>
-                    <td className="small" style={{ width: 100 }}>
+                    <td className="num zak-td-stock"><NumCell value={r.stock?.vld ?? null} onCommit={(v) => setStock(p.id!, 'vld', v)} min={0} placeholder="—" /></td>
+                    <td className="num zak-td-stock"><NumCell value={r.stock?.msk ?? null} onCommit={(v) => setStock(p.id!, 'msk', v)} min={0} placeholder="—" /></td>
+                    <td className="small zak-td-date">
                       <input type="date" value={r.stock?.asOfDate ?? ''} onChange={(e) => setAsOfDate(p.id!, e.target.value)} style={{ width: '100%', border: '1px solid transparent', background: 'transparent', font: 'inherit' }} />
                     </td>
-                    <td className={`num ${zoneClass(zoneV)}`} title={zoneTitle(zoneV, minM, maxM)}>{formatStockMonths(r.tzVld)}</td>
-                    <td className={`num ${zoneClass(zoneM)}`} title={zoneTitle(zoneM, minM, maxM)}>{formatStockMonths(r.tzMsk)}</td>
+                    <td className={`num zak-td-tz ${zoneClass(zoneV)}`} title={zoneTitle(zoneV, minM, maxM)}>{formatStockMonths(r.tzVld)}</td>
+                    <td className={`num zak-td-tz ${zoneClass(zoneM)}`} title={zoneTitle(zoneM, minM, maxM)}>{formatStockMonths(r.tzMsk)}</td>
                   </>}
 
                   {groups.supply && <>
-                    <td className={`num ${r.overdueVld > 0 ? 'warn-cell' : ''}`}>{fmtNum(r.incomingVld)}{r.overdueVld > 0 && <div className="small overdue">просрочено {fmtNum(r.overdueVld)}</div>}</td>
-                    <td className="small">{r.nearestVld ? fmtDate(r.nearestVld) : '—'}</td>
-                    <td className={`num ${r.overdueMsk > 0 ? 'warn-cell' : ''}`}>{fmtNum(r.incomingMsk)}{r.overdueMsk > 0 && <div className="small overdue">просрочено {fmtNum(r.overdueMsk)}</div>}</td>
-                    <td className="small">{r.nearestMsk ? fmtDate(r.nearestMsk) : '—'}</td>
-                    <td className={`num ${shortageV ? 'warn-cell' : ''}`} title={r.forecastVld.depletionDate ? `Исчерпание: ${fmtDate(r.forecastVld.depletionDate)}${r.forecastVld.totalStockoutDays > 0 ? ` · ${Math.round(r.forecastVld.totalStockoutDays)} дн. без товара` : ''}` : undefined}>
+                    <td className={`num zak-td-incoming ${r.overdueVld > 0 ? 'warn-cell' : ''}`}>{fmtNum(r.incomingVld)}{r.overdueVld > 0 && <div className="small overdue">просрочено {fmtNum(r.overdueVld)}</div>}</td>
+                    <td className="small zak-td-neardate">{r.nearestVld ? fmtDate(r.nearestVld) : '—'}</td>
+                    <td className={`num zak-td-incoming ${r.overdueMsk > 0 ? 'warn-cell' : ''}`}>{fmtNum(r.incomingMsk)}{r.overdueMsk > 0 && <div className="small overdue">просрочено {fmtNum(r.overdueMsk)}</div>}</td>
+                    <td className="small zak-td-neardate">{r.nearestMsk ? fmtDate(r.nearestMsk) : '—'}</td>
+                    <td className={`num zak-td-forecast ${shortageV ? 'warn-cell' : ''}`} title={r.forecastVld.depletionDate ? `Исчерпание: ${fmtDate(r.forecastVld.depletionDate)}${r.forecastVld.totalStockoutDays > 0 ? ` · ${Math.round(r.forecastVld.totalStockoutDays)} дн. без товара` : ''}` : undefined}>
                       {r.sdpVld.kind === 'nodata' ? 'Нет данных' : fmtNum(Math.round(r.forecastVld.stockAtDate(newVldDate)))}
                       {shortageV && <div className="small overdue">⚠ дефицит</div>}
                     </td>
-                    <td className={`num ${shortageM ? 'warn-cell' : ''}`} title={r.forecastMsk.depletionDate ? `Исчерпание: ${fmtDate(r.forecastMsk.depletionDate)}` : undefined}>
+                    <td className={`num zak-td-forecast ${shortageM ? 'warn-cell' : ''}`} title={r.forecastMsk.depletionDate ? `Исчерпание: ${fmtDate(r.forecastMsk.depletionDate)}` : undefined}>
                       {r.sdpMsk.kind === 'nodata' ? 'Нет данных' : fmtNum(Math.round(r.forecastMsk.stockAtDate(newMskDate)))}
                       {shortageM && <div className="small overdue">⚠ дефицит</div>}
                     </td>
                   </>}
 
                   {groups.order && <>
-                    <td className={`num ${c && (pl.vld ?? 0) > 0 && !c.vldPackOk ? 'warn-cell' : ''}`} style={{ width: 74 }} title={c && (pl.vld ?? 0) > 0 && !c.vldPackOk ? `Не кратно ${p.packSize}` : `Рекоменд.: ${c?.recVld ?? '—'}`}>
+                    <td className={`num zak-td-plan ${c && (pl.vld ?? 0) > 0 && !c.vldPackOk ? 'warn-cell' : ''}`} title={c && (pl.vld ?? 0) > 0 && !c.vldPackOk ? `Не кратно ${p.packSize}` : `Рекоменд.: ${c?.recVld ?? '—'}`}>
                       <NumCell value={pl.vld} onCommit={(v) => setPlan({ ...plan, [p.id!]: { ...pl, vld: v } })} min={0} />
                     </td>
-                    <td className="num small">{c && (pl.vld ?? 0) > 0 ? fmtNum(c.vldBoxes, Number.isInteger(c.vldBoxes) ? 0 : 2) : '—'}</td>
-                    <td className="num small">{c && c.vldSum > 0 ? fmtNum(c.vldSum) : '—'}</td>
-                    <td className={`num ${c && (pl.msk ?? 0) > 0 && !c.mskPackOk ? 'warn-cell' : ''}`} style={{ width: 74 }} title={c && (pl.msk ?? 0) > 0 && !c.mskPackOk ? `Не кратно ${p.packSize}` : `Рекоменд.: ${c?.recMsk ?? '—'}`}>
+                    <td className="num small zak-td-boxes">{c && (pl.vld ?? 0) > 0 ? fmtNum(c.vldBoxes, Number.isInteger(c.vldBoxes) ? 0 : 2) : '—'}</td>
+                    <td className="num small zak-td-sum">{c && c.vldSum > 0 ? fmtNum(c.vldSum) : '—'}</td>
+                    <td className={`num zak-td-plan ${c && (pl.msk ?? 0) > 0 && !c.mskPackOk ? 'warn-cell' : ''}`} title={c && (pl.msk ?? 0) > 0 && !c.mskPackOk ? `Не кратно ${p.packSize}` : `Рекоменд.: ${c?.recMsk ?? '—'}`}>
                       <NumCell value={pl.msk} onCommit={(v) => setPlan({ ...plan, [p.id!]: { ...pl, msk: v } })} min={0} />
                     </td>
-                    <td className="num small">{c && (pl.msk ?? 0) > 0 ? fmtNum(c.mskBoxes, Number.isInteger(c.mskBoxes) ? 0 : 2) : '—'}</td>
-                    <td className="num small">{c && c.mskSum > 0 ? fmtNum(c.mskSum) : '—'}</td>
-                    <td className={`num ${c && c.totalQty > 0 && !c.packOk ? 'warn-cell' : ''}`} title={c && c.totalQty > 0 && !c.packOk ? `Общее количество ${c.totalQty} не кратно ${p.packSize}. Автокоррекция не выполняется.` : undefined}>
+                    <td className="num small zak-td-boxes">{c && (pl.msk ?? 0) > 0 ? fmtNum(c.mskBoxes, Number.isInteger(c.mskBoxes) ? 0 : 2) : '—'}</td>
+                    <td className="num small zak-td-sum">{c && c.mskSum > 0 ? fmtNum(c.mskSum) : '—'}</td>
+                    <td className={`num zak-td-totalqty ${c && c.totalQty > 0 && !c.packOk ? 'warn-cell' : ''}`} title={c && c.totalQty > 0 && !c.packOk ? `Общее количество ${c.totalQty} не кратно ${p.packSize}. Автокоррекция не выполняется.` : undefined}>
                       {c ? fmtNum(c.totalQty) : '—'}
                       {c && c.totalBoxes > 0 && <span className="small muted"> ({fmtNum(c.totalBoxes, Number.isInteger(c.totalBoxes) ? 0 : 2)} кор.)</span>}
                     </td>
-                    <td className={`num small ${afterZoneV !== 'ok' && afterZoneV !== 'nodata' && (pl.vld ?? 0) > 0 ? zoneClass(afterZoneV) : ''} ${(afterZoneM !== 'ok' && afterZoneM !== 'nodata' && (pl.msk ?? 0) > 0) ? zoneClass(afterZoneM) : ''}`}>
+                    <td className={`num small zak-td-aftertz ${afterZoneV !== 'ok' && afterZoneV !== 'nodata' && (pl.vld ?? 0) > 0 ? zoneClass(afterZoneV) : ''} ${(afterZoneM !== 'ok' && afterZoneM !== 'nodata' && (pl.msk ?? 0) > 0) ? zoneClass(afterZoneM) : ''}`}>
                       {(pl.vld ?? 0) > 0 || (pl.msk ?? 0) > 0 ? `${formatStockMonths(c!.afterVld)} / ${formatStockMonths(c!.afterMsk)}` : '—'}
                     </td>
-                    <td className="num small">{c && (c.recVld || c.recMsk) ? `${c.recVld || 0} / ${c.recMsk || 0}` : (r.sdpVld.kind === 'nodata' && r.sdpMsk.kind === 'nodata' ? 'нет данных' : '0 / 0')}</td>
+                    <td className="num small zak-td-rec">{c && (c.recVld || c.recMsk) ? `${c.recVld || 0} / ${c.recMsk || 0}` : (r.sdpVld.kind === 'nodata' && r.sdpMsk.kind === 'nodata' ? 'нет данных' : '0 / 0')}</td>
                   </>}
                 </tr>
               );
