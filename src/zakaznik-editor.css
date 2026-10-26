@@ -290,7 +290,7 @@ table.grid.zak-table td { border: none; }
 /* Остальные группы колонок — разумные минимальные ширины по типу содержимого.
    Это запрещает сжатие любых колонок до нечитаемого состояния. */
 .zak-table .zak-th-pricekind, .zak-table .zak-td-pricekind { min-width: 90px; }   /* Тип + кнопка ✎ */
-.zak-table .zak-th-pricetiers, .zak-table .zak-td-pricetiers { width: 190px; min-width: 170px; } /* Цена / ступени */
+.zak-table .zak-th-pricetiers, .zak-table .zak-td-pricetiers { width: 100px; min-width: 100px; } /* Цена / ступени */
 .zak-table .zak-th-applied,  .zak-table .zak-td-applied  { min-width: 115px; }    /* Применённая цена */
 .zak-table .zak-th-sdp,      .zak-table .zak-td-sdp      { min-width: 90px; }     /* СДП */
 .zak-table .zak-th-months,   .zak-table .zak-td-months   { min-width: 90px; }     /* Месяцы запаса */
