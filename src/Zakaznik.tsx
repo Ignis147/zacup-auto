@@ -353,6 +353,16 @@ export function ZakaznikPage({
 
       <div className="tbl-scroll zak-scroll" onPaste={handlePasteStocks}>
         <table className="grid zak-table">
+          {/* Декоративная разметка (исправление п.1): жёсткие ширины первых
+              четырёх колонок — colgroup приоритетнее содержимого ячеек,
+              поэтому sticky-смещения left всегда точны и колонки не
+              наезжают друг на друга. Порядок колонок не менялся. */}
+          <colgroup>
+            <col style={{ width: 132 }} />
+            <col style={{ width: 84 }} />
+            <col style={{ width: 320 }} />
+            <col style={{ width: 64 }} />
+          </colgroup>
           <thead>
             <tr className="zak-group-row">
               <th colSpan={4} className="colgroup zak-gn zak-f1">Номенклатура</th>
