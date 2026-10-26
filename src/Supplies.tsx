@@ -385,10 +385,11 @@ function SupplyEditor({
   }
 
   return (
-    <dialog open>
-      <h3>{isNew ? 'Новая поставка' : `Поставка: ${supply!.number}`}</h3>
+    <dialog open className="supply-dialog">
+      <div className="supply-body">
+      <h3 className="supply-title">{isNew ? 'Новая поставка' : `Поставка: ${supply!.number}`}</h3>
       {fromOrder && !supply && <div className="small muted">Создаётся из зафиксированного заказа №{fromOrder.number}. Номенклатура, количества и цены заказа перенесены.</div>}
-      <div className="row">
+      <div className="supply-form-grid">
         <div className="field grow"><label>Название / номер поставки</label>
           <input value={number} onChange={(e) => setNumber(e.target.value)} /></div>
         <div className="field"><label>Дата оформления</label>
@@ -400,10 +401,10 @@ function SupplyEditor({
         <div className="field"><label>План · Москва</label>
           <input type="date" value={mskDate} onChange={(e) => { setDatesTouched(true); setMskDate(e.target.value); }} /></div>
       </div>
-      <div className="small muted">Даты рассчитаны автоматически ({lg.orderPrep}+{lg.shipVld} / +{lg.extraMsk} дней) и могут быть изменены вручную.</div>
+      <div className="supply-hint small">Даты рассчитаны автоматически ({lg.orderPrep}+{lg.shipVld} / +{lg.extraMsk} дней) и могут быть изменены вручную.</div>
 
-      <div className="tbl-scroll" style={{ maxHeight: '45vh', marginTop: 10 }}>
-        <table className="grid">
+      <div className="tbl-scroll supply-table-scroll">
+        <table className="grid supply-table">
           <thead>
             <tr>
               <th>Артикул</th><th>Наименование</th><th>Кратность</th>
@@ -423,39 +424,39 @@ function SupplyEditor({
               const itemSum = supplyItemSum(i);
               return (
                 <tr key={i.productId}>
-                  <td>{p.article}</td>
-                  <td>{p.name}</td>
-                  <td className="num">{p.packSize}</td>
-                  <td className="num" style={{ width: 90 }}>
+                  <td className="supply-art">{p.article}</td>
+                  <td className="supply-name" title={p.name}>{p.name}</td>
+                  <td className="num supply-pack">{p.packSize}</td>
+                  <td className="num cell-qty">
                     <NumCell value={i.totalQty} onCommit={(v) => changeTotal(i.productId!, v)} min={0} step={p.packSize} />
                   </td>
-                  <td className={`num ${vldPackBad ? 'warn-cell' : ''}`} style={{ width: 90 }} title={vldPackBad ? `Не кратно ${p.packSize}` : 'При увеличении ВЛД Москва уменьшается автоматически'}>
+                  <td className={`num cell-qty ${vldPackBad ? 'warn-cell' : ''}`} title={vldPackBad ? `Не кратно ${p.packSize}` : 'При увеличении ВЛД Москва уменьшается автоматически'}>
                     <NumCell value={i.vldQty} onCommit={(v) => changeBranch(i.productId!, 'vld', v)} min={i.vldReceived} />
                   </td>
-                  <td className={`num ${mskPackBad ? 'warn-cell' : ''}`} style={{ width: 90 }} title={mskPackBad ? `Не кратно ${p.packSize}` : 'При увеличении Москвы ВЛД уменьшается автоматически'}>
+                  <td className={`num cell-qty ${mskPackBad ? 'warn-cell' : ''}`} title={mskPackBad ? `Не кратно ${p.packSize}` : 'При увеличении Москвы ВЛД уменьшается автоматически'}>
                     <NumCell value={i.mskQty} onCommit={(v) => changeBranch(i.productId!, 'msk', v)} min={i.mskReceived} />
                   </td>
-                  <td className="num" style={{ width: 130 }}>
-                    <div className="row" style={{ gap: 2 }}>
+                  <td className="num cell-receive">
+                    <div className="receive-line">
                       <NumCell value={i.vldReceived} onCommit={(v) => patchItem(i.productId!, { vldReceived: Math.max(0, Math.round(v ?? 0)), vldActualDate: (v ?? 0) > 0 ? (i.vldActualDate ?? todayISO()) : undefined })} min={0} />
-                      <button className="btn small" title="Отметить полное поступление во Владивосток сегодня" onClick={() => markReceived(i.productId!, 'vld')}>✓</button>
+                      <button className="btn confirm-btn" title="Отметить полное поступление во Владивосток сегодня" onClick={() => markReceived(i.productId!, 'vld')}>✓</button>
                     </div>
                     {overdueV && <span className="small overdue">просрочена</span>}
                   </td>
-                  <td className="num" style={{ width: 130 }}>
-                    <div className="row" style={{ gap: 2 }}>
+                  <td className="num cell-receive">
+                    <div className="receive-line">
                       <NumCell value={i.mskReceived} onCommit={(v) => patchItem(i.productId!, { mskReceived: Math.max(0, Math.round(v ?? 0)), mskActualDate: (v ?? 0) > 0 ? (i.mskActualDate ?? todayISO()) : undefined })} min={0} />
-                      <button className="btn small" title="Отметить полное поступление в Москву сегодня" onClick={() => markReceived(i.productId!, 'msk')}>✓</button>
+                      <button className="btn confirm-btn" title="Отметить полное поступление в Москву сегодня" onClick={() => markReceived(i.productId!, 'msk')}>✓</button>
                     </div>
                     {overdueM && <span className="small overdue">просрочена</span>}
                   </td>
-                  <td className="num" style={{ width: 90 }} title={`Закупочная цена за штуку, ${brand.currency}. Можно изменить вручную — цена в товарной матрице не изменится.`}>
+                  <td className="num cell-price" title={`Закупочная цена за штуку, ${brand.currency}. Можно изменить вручную — цена в товарной матрице не изменится.`}>
                     <NumCell value={supplyItemUnitPrice(i)} onCommit={(v) => changePrice(i.productId, v)} min={0} />
                   </td>
-                  <td className="num" style={{ width: 100 }} title="Сумма позиции = общее количество × цена за штуку">
+                  <td className="num cell-sum" title="Сумма позиции = общее количество × цена за штуку">
                     {itemSum === null ? <span className="muted small">нет цены</span> : fmtMoney(itemSum)}
                   </td>
-                  <td><button className="btn small danger" onClick={() => removeItem(i.productId!)}>Убрать</button></td>
+                  <td className="cell-remove"><button className="btn remove-btn" onClick={() => removeItem(i.productId!)}>Убрать</button></td>
                 </tr>
               );
             })}
@@ -463,8 +464,8 @@ function SupplyEditor({
         </table>
       </div>
 
-      <div className="row" style={{ marginTop: 8 }}>
-        <select onChange={(e) => { if (e.target.value) addProduct(Number(e.target.value)); e.target.value = ''; }} defaultValue="">
+      <div className="row supply-add-row">
+        <select className="supply-add-select" onChange={(e) => { if (e.target.value) addProduct(Number(e.target.value)); e.target.value = ''; }} defaultValue="">
           <option value="" disabled>＋ Добавить товар…</option>
           {products.filter((p) => !p.archived && !items.some((i) => i.productId === p.id)).map((p) => (
             <option key={p.id} value={p.id}>{p.article} · {p.name}</option>
@@ -474,31 +475,31 @@ function SupplyEditor({
       </div>
 
       {validation.length > 0 && (
-        <div className="err small" style={{ marginTop: 6 }}>
+        <div className="err small supply-validation">
           {validation.map((e, k) => <div key={k}>⚠ {e}</div>)}
           <div>Подтверждение поставки с некорректным распределением невозможно.</div>
         </div>
       )}
 
       {/* Итоговая стоимость поставки */}
-      <div className="row" style={{ marginTop: 8 }}>
-        <span className="grow" />
-        <span className="small muted">Итого по поставке:</span>
-        <b>{cur} {fmtMoney(costTotals.sum)}</b>
-        <span className="small muted">≈ {fmtNum(costTotals.rub)} ₽</span>
+      <div className="supply-total">
+        <div className="supply-total-label">Итого по поставке</div>
+        <div className="supply-total-main">{cur} {fmtMoney(costTotals.sum)}</div>
+        <div className="supply-total-rub">≈ {fmtNum(costTotals.rub)} ₽</div>
       </div>
       {missingPrices && (
-        <div className="row small" style={{ marginTop: 2 }}>
-          <span className="overdue">⚠ Не для всех товаров задана закупочная цена — итог неполный.</span>
+        <div className="row supply-missing-prices">
+          <span className="overdue small">⚠ Не для всех товаров задана закупочная цена — итог неполный.</span>
           <button className="btn small" onClick={fillMissingPrices}>Заполнить цены из матрицы</button>
         </div>
       )}
 
-      <div className="dialog-actions">
-        {onCancelSupply && <button className="btn danger" onClick={() => { onCancelSupply(); onClose(); }}>Отменить поставку</button>}
+      <div className="dialog-actions supply-actions">
+        {onCancelSupply && <button className="btn danger-ghost" onClick={() => { onCancelSupply(); onClose(); }}>Отменить поставку</button>}
         <span className="grow" />
-        <button className="btn" onClick={onClose}>Закрыть</button>
+        <button className="btn neutral" onClick={onClose}>Закрыть</button>
         <button className="btn primary" onClick={save} disabled={validation.length > 0}>Сохранить поставку</button>
+      </div>
       </div>
     </dialog>
   );
