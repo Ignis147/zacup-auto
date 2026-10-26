@@ -138,23 +138,46 @@
 }
 
 /* ---------- Область прокрутки таблицы ---------- */
+/* Единственный scroll-контейнер раздела (п.2 задачи): одна горизонтальная
+   и одна вертикальная полосы. Панель инструментов — вне области прокрутки. */
 .tbl-scroll.zak-scroll {
   border: 1px solid #E2E8F0;
   border-radius: 10px;
   background: #FFFFFF;
-  /* внутренняя горизонтальная + вертикальная прокрутка;
-     панель инструментов находится вне этой области */
   max-height: calc(100vh - 208px);
   overflow: auto;
-  scrollbar-color: #cbd5e1 #F8FAFC;
+  overscroll-behavior-x: contain; /* колесо/тачпад внутри таблицы не
+                                    «протаскивает» внешние контейнеры —
+                                    исключает конфликт полос прокрутки */
 }
+/* Заметный удобный горизонтальный скроллбар ~13px (Firefox) */
+.tbl-scroll.zak-scroll { scrollbar-width: thin; scrollbar-color: #CBD5E1 #F8FAFC; }
+/* WebKit/Blink: стилизация полос (высота 13px, контрастный ползунок) */
+.tbl-scroll.zak-scroll::-webkit-scrollbar { width: 13px; height: 13px; }
+.tbl-scroll.zak-scroll::-webkit-scrollbar-track { background: #F8FAFC; }
+.tbl-scroll.zak-scroll::-webkit-scrollbar-corner { background: #F8FAFC; }
+.tbl-scroll.zak-scroll::-webkit-scrollbar-thumb {
+  background: #CBD5E1;
+  border-radius: 7px;
+  border: 3px solid #F8FAFC; /* тонкие поля: ползунок ≈7px «жижки», вся полоса 13px */
+}
+.tbl-scroll.zak-scroll::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+.tbl-scroll.zak-scroll::-webkit-scrollbar-thumb:active { background: #64748B; }
 
-/* ---------- Таблица: отказ от «Excel-сетки» ---------- */
+/* ---------- Таблица: отказ от «Excel-сетки» ----------
+   table-layout:fixed (исправление п.1): ширины колонок из colgroup /
+   классов zak-f* теперь ЖЁСТКИЕ — колонки не разрастаются по содержимому,
+   поэтому смещения left закрепляемых колонок всегда точно совпадают с
+   фактическими границами колонок. Это устраняет наложение колонок друг
+   на друга, скрытие «Кратности» и просвечивание данных (п.1 и п.3).
+   Колонки без явной ширины делят остаток поровну; min-width таблицы
+   гарантирует читаемость и горизонтальную прокрутку при нехватке места. */
 table.grid.zak-table {
   border-collapse: separate;
   border-spacing: 0;
+  table-layout: fixed;
   width: 100%;
-  min-width: 1560px;      /* колонки не сжимаются до нечитаемого — при нехватке ширины работает горизонтальный скролл */
+  min-width: 1560px;     /* колонки не сжимаются до нечитаемого — при нехватке ширины работает горизонтальный скролл */
   background: #FFFFFF;
   color: #1F2937;
   font-size: 12.5px;
@@ -223,33 +246,43 @@ table.grid.zak-table td { border: none; }
 .zak-table tbody tr:hover td { background: #EFF6FF; }
 .zak-table tbody tr.zak-archived td { opacity: .55; }
 
-/* Числовые значения — вправо, табличные цифры; текстовые — влево */
+/* Числовые значения — вправо, табличные цифры; текстовые — влево.
+   При table-layout:fixed nowrap не даёт колонке расти, но длинное число
+   может вылезти за границу ячейки и наложиться на соседнюю колонку —
+   поэтому для чисел включён безопасный перенос (данные не обрезаются). */
 .zak-table td.num {
   text-align: right;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
-/* --- Ширины первых колонок (ориентир для закреплённых колонок) --- */
-.zak-f1 { width: 132px; }
-.zak-f2 { width: 84px; }
-.zak-f3 { width: 320px; }
-.zak-f4 { width: 62px; }
+/* Даты «Ближ. ВЛД/МСК» и прочие короткие nowrap-ячейки common.css тоже
+   переносятся вместо выхода за границы фиксированных колонок */
+.zak-table td.small { white-space: normal; }
 
-/* --- Колонка наименования: широкая, перенос без потери доступности --- */
+/* --- Ширины первых колонок: жёсткие значения заданы через colgroup
+     (<col> в Zakaznik.tsx, приоритетнее ширинок ячеек). Здесь — те же
+     значения как резерв и ориентир для left-смещений sticky:
+     132 + 84 + 320 + 64 = 600px (конец закреплённой зоны) --- */
+
+/* --- Колонка наименования: широкая, перенос без потери доступности ---
+   Полные названия всегда видны целиком: многострочный перенос по словам,
+   БЕЗ ellipsis/line-clamp/обрезки. Ширина 320px (диапазон 280–360px из ТЗ)
+   зафиксирована в colgroup. */
 .zak-table th.zak-th-name { width: 320px; min-width: 280px; max-width: 360px; }
 .zak-table td.zak-name {
-  width: 320px;
-  min-width: 280px;
-  max-width: 360px;
   white-space: normal;
   overflow-wrap: break-word;
   word-break: normal;
 }
 .zak-table td.zak-art {
-  white-space: nowrap;
   color: #64748B;
   font-variant-numeric: tabular-nums;
+  /* при table-layout:fixed длинный артикул переносится, а не выходит
+     за границу ячейки поверх соседних колонок */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 .zak-table th.zak-th-pack { text-align: right; }
 
@@ -263,43 +296,60 @@ table.grid.zak-table td { border: none; }
 .zak-table td.zak-name a:hover { color: #2563EB; text-decoration: underline; text-underline-offset: 2px; }
 .zak-table td.zak-name a:focus-visible { outline: 2px solid rgba(37, 99, 235, .45); outline-offset: 1px; border-radius: 3px; }
 
-/* ---------- Закрепление первых четырёх служебных колонок ----------
-   Штрихкод, Артикул, Наименование закреплены безусловно.
-   «Кратность» закреплена вместе с ними, чтобы фиксированная зона
-   всегда заканчивалась ровной границей у края закреплённой области
-   (иначе при отключённых группах за «Наименованием» плыли бы разные колонки).
-   Реализация — только CSS: colSpan первого закреплённого <td> в tfoot
-   совпадает с числом закреплённых колонок, поэтому итоговая ячейка
-   корректно лежит внутри закреплённой зоны. */
+/* ---------- Закрепление первых служебных колонок (п.1 и п.3 задачи) ----------
+   Причина прежних перекрытий: ширины колонок задавались только как подсказка
+   (width/min-width при table-layout:auto), колонки разрастались по
+   содержимому, и захардкоженные смещения left переставали совпадать с
+   фактическими границами — sticky-колонки наезжали друг на друга, «Кратность»
+   скрывалась, между колонками просвечивали данные.
+   Исправление: жёсткая ширина всех четырёх начальных колонок задана через
+   colgroup (<col> в начале таблицы) + table-layout:fixed; colgroup имеет
+   приоритет над шириной ячеек/inline-style, поэтому колонки гарантированно
+   имеют ровно 132/84/320/64 px и смещения left всегда точны. Закрепление
+   реализовано полностью средствами CSS. Порядок колонок не менялся.
+   Слои: фикс. колонки tbody z-index 2; шапка над ними (3/4); их пересечения —
+   5/6; тень зоны — только у правой границы. */
 .zak-table .zak-sticky-col {
   position: sticky;
-  z-index: 1;
-  background: inherit;             /* наследует фон td (белый/зебра) */
+  background-clip: padding-box;    /* фон гарантированно закрывает ячейку —
+                                     данные под/между колонками не просвечивают */
 }
-.zak-table td.zak-sticky-col { background-color: #FFFFFF; }
+.zak-table tbody td.zak-sticky-col { z-index: 2; background-color: #FFFFFF; }
 .zak-table tbody tr:nth-child(even) td.zak-sticky-col { background-color: #FBFDFF; }
 .zak-table tbody tr:hover td.zak-sticky-col { background-color: #EFF6FF; }
 .zak-table thead th.zak-sticky-col { background-color: #F8FAFC; }
 
+/* Точные смещения: каждое left = сумма жёстких ширин предыдущих колонок
+   (132 + 84 + 320 + 64 = 600px — конец закреплённой зоны) */
 .zak-table .zak-f1 { left: 0; }
 .zak-table .zak-f2 { left: 132px; }
 .zak-table .zak-f3 { left: 216px; }
 .zak-table .zak-f4 { left: 536px; }
 
-/* Тень/разделитель справа от закреплённой зоны */
+/* Резервные ширины для ячеек закреплённой зоны (основные — в colgroup).
+   ВАЖНО: задаются ТОЛЬКО ячейкам tbody/tfoot, но не th.zak-f4 — иначе
+   «Закупочная цена» (colSpan=3, тоже zak-f4) тянула бы все три колонки
+   группы к 64px и перекрывала соседние столбцы. */
+.zak-table td.zak-f1 { width: 132px; }
+.zak-table td.zak-f2 { width: 84px; }
+.zak-table td.zak-f3 { width: 320px; }
+.zak-table td.zak-f4 { width: 64px; }
+
+/* Пересечения закреплённых строк и колонок — поверх остальных шапок */
+.zak-table thead tr.zak-head-row  th.zak-sticky-col { z-index: 5; }
+.zak-table thead tr.zak-group-row th.zak-sticky-col { z-index: 6; }
+
+/* Лёгкая тень/разделитель справа от закреплённой зоны (у правой границы) */
 .zak-table .zak-f4::after {
   content: "";
   position: absolute;
   top: 0;
   bottom: 0;
   right: -8px;
-  left: 100%;
   width: 8px;
   pointer-events: none;
   box-shadow: inset 6px 0 6px -6px rgba(15, 23, 42, 0.18);
 }
-/* z-index пересечений: фикс. колонки < фикс. шапка < их пересечение */
-.zak-table thead th.zak-sticky-col { z-index: 5; }
 
 /* ---------- Поля редактирования в таблице ---------- */
 .zak-table .cell-input {
@@ -368,11 +418,14 @@ table.grid.zak-table td { border: none; }
 .zak-table tbody tr:hover td.warn-ok { background: #BBF7D0 !important; }
 .zak-table tbody tr:hover td.warn-orange { background: #FDE68A !important; }
 
-/* ---------- Итоговая строка (закреплена снизу области прокрутки) ---------- */
+/* ---------- Итоговая строка ----------
+   Исправление п.4: CSS-закрепление (position: sticky; bottom: 0) убрано —
+   раньше из-за него поверх таблицы появлялась отдельная панель «ИТОГО»,
+   перекрывающая реальные суммы. Строка занимает обычное место в конце
+   таблицы; оформление сохранено: светлый фон, верхняя граница, жирный
+   текст. При прокрутке вниз видны все значения итогов, а горизонтальная
+   прокрутка показывает итоги в любой колонке. Формулы итогов не менялись. */
 .zak-table tfoot td {
-  position: sticky;
-  bottom: 0;
-  z-index: 1;
   background: #F8FAFC;
   border-top: 2px solid #E2E8F0;
   border-bottom: none;
@@ -381,7 +434,6 @@ table.grid.zak-table td { border: none; }
   font-weight: 700;
   color: #1E293B;
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 .zak-table tfoot td.num { text-align: right; }
 .zak-table tfoot .small { font-weight: 600; }
@@ -390,14 +442,6 @@ table.grid.zak-table td { border: none; }
   text-transform: uppercase;
   color: #64748B;
   font-size: 11px;
-}
-/* итоговая ячейка лежит внутри закреплённой зоны (colSpan=16 ≥ 4 закреплённых колонок) */
-.zak-table tfoot tr.zak-total-row td:first-child {
-  position: sticky;
-  left: 0;
-  z-index: 6;
-  background: #F8FAFC;
-  box-shadow: 6px 0 6px -6px rgba(15, 23, 42, 0.18);
 }
 
 /* пустая строка «нет товаров» */
