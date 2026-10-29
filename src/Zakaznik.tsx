@@ -370,11 +370,11 @@ export function ZakaznikPage({
             </tr>
             <tr className="zak-head-row">
               <th className="zak-th-barcode">Штрихкод</th><th className="zak-th-art">Артикул</th><th className="zak-th-name">Наименование</th><th className="zak-th-pack">Кратность</th>
-              {groups.price && <><th className="zak-th-pricekind">Тип</th><th className="zak-th-pricetiers">Цена/ступени</th><th className="num zak-th-applied">Примен. цена</th></>}
+              {groups.price && <><th className="zak-th-pricekind">Тип</th><th className="zak-th-pricetiers">Цена</th><th className="num zak-th-applied">Факт</th></>}
               {groups.sales && <><th className="num zak-th-sdp">СДП ВЛД</th><th className="num zak-th-months">мес. ВЛД</th><th className="num zak-th-sdp">СДП МСК</th><th className="num zak-th-months">мес. МСК</th></>}
               {groups.stock && <><th className="num zak-th-stock">Ост. ВЛД</th><th className="num zak-th-stock">Ост. МСК</th><th className="zak-th-date">Дата</th><th className="num zak-th-tz">ТЗ ВЛД</th><th className="num zak-th-tz">ТЗ МСК</th></>}
               {groups.supply && <><th className="num zak-th-incoming">В пути ВЛД</th><th className="zak-th-neardate">Ближ. ВЛД</th><th className="num zak-th-incoming">В пути МСК</th><th className="zak-th-neardate">Ближ. МСК</th><th className="num zak-th-forecast">ВЛД к заказу</th><th className="num zak-th-forecast">МСК к заказу</th></>}
-              {groups.order && <><th className="num zak-th-plan">Заказ ВЛД</th><th className="num zak-th-boxes">Корп. ВЛД</th><th className="num zak-th-sum">Сумма ВЛД</th><th className="num zak-th-plan">Заказ МСК</th><th className="num zak-th-boxes">Корп. МСК</th><th className="num zak-th-sum">Сумма МСК</th><th className="num zak-th-totalqty">Всего</th><th className="num zak-th-aftertz">ТЗ после ВЛД / МСК</th><th className="num zak-th-rec">Рекоменд.</th></>}
+              {groups.order && <><th className="num zak-th-plan">Заказ ВЛД</th><th className="num zak-th-boxes">Кор. ВЛД</th><th className="num zak-th-sum">Сумма ВЛД</th><th className="num zak-th-plan">Заказ МСК</th><th className="num zak-th-boxes">Кор. МСК</th><th className="num zak-th-sum">Сумма МСК</th><th className="num zak-th-totalqty">Всего</th><th className="num zak-th-aftertz">ТЗ итог</th><th className="num zak-th-rec">Рекоменд.</th></>}
             </tr>
           </thead>
           <tbody>
