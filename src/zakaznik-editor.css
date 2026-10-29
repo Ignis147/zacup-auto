@@ -291,7 +291,7 @@ table.grid.zak-table td { border: none; }
    Это запрещает сжатие любых колонок до нечитаемого состояния. */
 .zak-table .zak-th-pricekind, .zak-table .zak-td-pricekind { min-width: 90px; }   /* Тип + кнопка ✎ */
 .zak-table .zak-th-pricetiers, .zak-table .zak-td-pricetiers { width: 100px; min-width: 100px; } /* Цена / ступени */
-.zak-table .zak-th-applied,  .zak-table .zak-td-applied  { min-width: 115px; }    /* Применённая цена */
+.zak-table .zak-th-applied,  .zak-table .zak-td-applied  { min-width: 50px; }    /* Применённая цена */
 .zak-table .zak-th-sdp,      .zak-table .zak-td-sdp      { min-width: 50px; }     /* СДП */
 .zak-table .zak-th-months,   .zak-table .zak-td-months   { min-width: 50px; }     /* Месяцы запаса */
 .zak-table .zak-th-stock,    .zak-table .zak-td-stock    { min-width: 100px; }    /* Остатки */
@@ -299,13 +299,13 @@ table.grid.zak-table td { border: none; }
 .zak-table .zak-th-tz,       .zak-table .zak-td-tz       { min-width: 50px; }    /* ТЗ */
 .zak-table .zak-th-incoming, .zak-table .zak-td-incoming { min-width: 50px; }    /* В пути */
 .zak-table .zak-th-neardate, .zak-table .zak-td-neardate { min-width: 50px; }    /* Ближайшие даты */
-.zak-table .zak-th-forecast, .zak-table .zak-td-forecast { min-width: 130px; }    /* Прогнозы */
-.zak-table .zak-th-plan,     .zak-table .zak-td-plan     { min-width: 110px; }    /* Планируемый заказ */
-.zak-table .zak-th-boxes,    .zak-table .zak-td-boxes    { min-width: 90px; }
-.zak-table .zak-th-sum,      .zak-table .zak-td-sum      { min-width: 130px; }    /* Суммы */
-.zak-table .zak-th-totalqty, .zak-table .zak-td-totalqty { min-width: 150px; }    /* Всего шт/кор */
-.zak-table .zak-th-aftertz,  .zak-table .zak-td-aftertz  { min-width: 150px; }
-.zak-table .zak-th-rec,      .zak-table .zak-td-rec      { min-width: 110px; }    /* Рекомендация */
+.zak-table .zak-th-forecast, .zak-table .zak-td-forecast { min-width: 100px; }    /* Прогнозы */
+.zak-table .zak-th-plan,     .zak-table .zak-td-plan     { min-width: 80px; }    /* Планируемый заказ */
+.zak-table .zak-th-boxes,    .zak-table .zak-td-boxes    { min-width: 70px; }
+.zak-table .zak-th-sum,      .zak-table .zak-td-sum      { min-width: 80px; }    /* Суммы */
+.zak-table .zak-th-totalqty, .zak-table .zak-td-totalqty { min-width: 100px; }    /* Всего шт/кор */
+.zak-table .zak-th-aftertz,  .zak-table .zak-td-aftertz  { min-width: 100px; }
+.zak-table .zak-th-rec,      .zak-table .zak-td-rec      { min-width: 100px; }    /* Рекомендация */
 
 /* Поля ввода внутри ячеек не должны сжиматься до нескольких пикселей:
    min-width учитывается алгоритмом автоширины колонок. */
